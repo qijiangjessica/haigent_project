@@ -1,0 +1,48 @@
+import type { Interviewer } from "@/types";
+
+export const INTERVIEWERS: Interviewer[] = [
+  {
+    id: "int-1",
+    name: "Alex Johnson",
+    email: "alex.j@haigent.ai",
+    title: "Full-Stack Developer",
+    department: "Information Technology",
+    calConnected: true,
+    isActive: true,
+    timezone: "America/New_York",
+    maxInterviewsPerDay: 4,
+  },
+  {
+    id: "int-2",
+    name: "Priya Sharma",
+    email: "priya.s@haigent.ai",
+    title: "Engineering Manager",
+    department: "Engineering",
+    calConnected: true,
+    isActive: true,
+    timezone: "America/Vancouver",
+    maxInterviewsPerDay: 3,
+  },
+  {
+    id: "int-3",
+    name: "David Kim",
+    email: "david.k@haigent.ai",
+    title: "Senior Designer",
+    department: "Design",
+    calConnected: false,
+    isActive: true,
+    timezone: "America/New_York",
+    maxInterviewsPerDay: 4,
+  },
+  {
+    id: "int-4",
+    name: "Rachel Green",
+    email: "rachel.g@haigent.ai",
+    title: "HR Director",
+    department: "Human Resources",
+    calConnected: false,
+    isActive: true,
+    timezone: "America/Chicago",
+    maxInterviewsPerDay: 5,
+  },
+];
