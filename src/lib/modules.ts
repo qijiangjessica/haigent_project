@@ -72,9 +72,11 @@ export const AI_MODULES: AIModule[] = [
     slug: "payroll",
     icon: DollarSign,
     accentColor: "brand-gold",
-    enabled: false,
-    description: "Payroll processing and tracking",
-    subPages: [],
+    enabled: true,
+    description: "AI-powered payroll assistant connected to Salesforce Agentforce",
+    subPages: [
+      { name: "AI Assistant", path: "/payroll", icon: "analytics-dashboard" },
+    ],
   },
   {
     name: "Engee",
