@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAgentAccessToken, getAgentRuntimeUrl, getAgentId } from "@/lib/salesforce";
+import { getAgentAccessToken, getAgentApiBase, getAgentId, getMyDomain } from "@/lib/salesforce";
 
 // POST /api/agent — handles session creation, messaging, and ending
 export async function POST(request: NextRequest) {
@@ -8,22 +8,26 @@ export async function POST(request: NextRequest) {
     const { action, sessionId, message, sequenceId } = body;
 
     const accessToken = await getAgentAccessToken();
-    const runtimeUrl = getAgentRuntimeUrl();
+    const apiBase = getAgentApiBase();
 
     if (action === "start") {
-      // Create a new agent session
       const agentId = getAgentId();
       const randomUuid = crypto.randomUUID();
 
       const response = await fetch(
-        `${runtimeUrl}/api/v1/sessions?bypassUser=true`,
+        `${apiBase}/agents/${agentId}/sessions`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ agentId, randomUuid }),
+          body: JSON.stringify({
+            externalSessionKey: randomUuid,
+            instanceConfig: { endpoint: getMyDomain() },
+            streamingCapabilities: { chunkTypes: ["Text"] },
+            bypassUser: true,
+          }),
         }
       );
 
@@ -47,9 +51,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Send a synchronous message to the agent
       const response = await fetch(
-        `${runtimeUrl}/api/v1/sessions/${sessionId}/send`,
+        `${apiBase}/sessions/${sessionId}/messages`,
         {
           method: "POST",
           headers: {
@@ -57,8 +60,11 @@ export async function POST(request: NextRequest) {
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
-            message,
-            sequenceId: sequenceId ?? 1,
+            message: {
+              type: "Text",
+              text: message,
+              sequenceId: sequenceId ?? 1,
+            },
           }),
         }
       );
@@ -72,7 +78,14 @@ export async function POST(request: NextRequest) {
       }
 
       const data = await response.json();
-      return NextResponse.json(data);
+
+      // Extract the agent's text response from the messages array
+      const agentText = data.messages
+        ?.map((m: { message?: string }) => m.message)
+        .filter(Boolean)
+        .join("\n") || "I received your message but couldn't generate a response.";
+
+      return NextResponse.json({ response: { text: agentText }, raw: data });
     }
 
     if (action === "end") {
@@ -83,9 +96,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // End the session
       const response = await fetch(
-        `${runtimeUrl}/api/v1/sessions/${sessionId}`,
+        `${apiBase}/sessions/${sessionId}`,
         {
           method: "DELETE",
           headers: {

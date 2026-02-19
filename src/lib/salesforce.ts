@@ -7,7 +7,6 @@ const {
   SALESFORCE_LOGIN_URL,
   SALESFORCE_REDIRECT_URI,
   SALESFORCE_MY_DOMAIN,
-  SALESFORCE_AGENT_RUNTIME_URL,
   SALESFORCE_AGENT_ID,
 } = process.env;
 
@@ -39,15 +38,17 @@ export function generateCodeChallenge(verifier: string): string {
 
 // --- Agentforce Agent API ---
 
+const AGENT_API_BASE = "https://api.salesforce.com/einstein/ai-agent/v1";
+
 let cachedToken: { accessToken: string; expiresAt: number } | null = null;
 
 export async function getAgentAccessToken(): Promise<string> {
-  // Return cached token if still valid (with 5 min buffer)
   if (cachedToken && Date.now() < cachedToken.expiresAt - 5 * 60 * 1000) {
     return cachedToken.accessToken;
   }
 
   const tokenUrl = `${SALESFORCE_MY_DOMAIN}/services/oauth2/token`;
+
   const response = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -71,12 +72,12 @@ export async function getAgentAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-export function getMyDomain(): string {
-  return SALESFORCE_MY_DOMAIN!;
+export function getAgentApiBase(): string {
+  return AGENT_API_BASE;
 }
 
-export function getAgentRuntimeUrl(): string {
-  return SALESFORCE_AGENT_RUNTIME_URL || SALESFORCE_MY_DOMAIN!;
+export function getMyDomain(): string {
+  return SALESFORCE_MY_DOMAIN!;
 }
 
 export function getAgentId(): string {
