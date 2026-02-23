@@ -54,9 +54,11 @@ export const AI_MODULES: AIModule[] = [
     slug: "onboarding",
     icon: UserPlus,
     accentColor: "brand-teal",
-    enabled: false,
-    description: "Automated employee onboarding workflows",
-    subPages: [],
+    enabled: true,
+    description: "AI-powered onboarding assistant connected to ServiceNow Virtual Agent",
+    subPages: [
+      { name: "Dashboard", path: "/onboarding", icon: "analytics-dashboard" },
+    ],
   },
   {
     name: "Benefits",
