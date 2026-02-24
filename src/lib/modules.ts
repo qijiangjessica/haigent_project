@@ -65,9 +65,11 @@ export const AI_MODULES: AIModule[] = [
     slug: "benefits",
     icon: Heart,
     accentColor: "brand-green",
-    enabled: false,
-    description: "Benefits enrollment and management",
-    subPages: [],
+    enabled: true,
+    description: "AI-powered benefits assistant connected to ServiceNow",
+    subPages: [
+      { name: "Dashboard", path: "/benefits", icon: "analytics-dashboard" },
+    ],
   },
   {
     name: "Payroll",

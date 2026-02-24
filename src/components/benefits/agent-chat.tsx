@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Loader2, RotateCcw } from "lucide-react";
+
 interface MessageParam {
   role: "user" | "assistant";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -13,9 +14,8 @@ interface DisplayMessage {
   text: string;
 }
 
-export function OnboardingChat() {
+export function BenefitsChat() {
   const [display, setDisplay] = useState<DisplayMessage[]>([]);
-  // Full message history for Claude context (includes tool use blocks)
   const [history, setHistory] = useState<MessageParam[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,9 +33,7 @@ export function OnboardingChat() {
 
     setInput("");
     setError(null);
-
-    const userMsg: DisplayMessage = { role: "user", text };
-    setDisplay((prev) => [...prev, userMsg]);
+    setDisplay((prev) => [...prev, { role: "user", text }]);
 
     const newHistory: MessageParam[] = [
       ...history,
@@ -45,23 +43,16 @@ export function OnboardingChat() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/onboarding/chat", {
+      const res = await fetch("/api/benefits/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: newHistory }),
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.details || data.error || "Request failed");
 
-      if (!res.ok) {
-        throw new Error(data.details || data.error || "Request failed");
-      }
-
-      setDisplay((prev) => [
-        ...prev,
-        { role: "assistant", text: data.response },
-      ]);
-      // Store full message history (with tool use blocks) for next turn
+      setDisplay((prev) => [...prev, { role: "assistant", text: data.response }]);
       setHistory(data.messages ?? newHistory);
     } catch (err) {
       setError(String(err));
@@ -83,16 +74,12 @@ export function OnboardingChat() {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-brand-teal/10 flex items-center justify-center">
-            <Bot className="h-5 w-5 text-brand-teal" />
+          <div className="w-9 h-9 rounded-xl bg-brand-green/10 flex items-center justify-center">
+            <Bot className="h-5 w-5 text-brand-green" />
           </div>
           <div>
-            <h3 className="font-semibold text-sm text-foreground">
-              Onboarding Assistant
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Claude AI · ServiceNow
-            </p>
+            <h3 className="font-semibold text-sm text-foreground">Benefits Assistant</h3>
+            <p className="text-xs text-muted-foreground">Claude AI · ServiceNow</p>
           </div>
         </div>
         <button
@@ -108,20 +95,18 @@ export function OnboardingChat() {
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {display.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-14 h-14 rounded-2xl bg-brand-teal/10 flex items-center justify-center mb-4">
-              <Bot className="h-7 w-7 text-brand-teal" />
+            <div className="w-14 h-14 rounded-2xl bg-brand-green/10 flex items-center justify-center mb-4">
+              <Bot className="h-7 w-7 text-brand-green" />
             </div>
-            <h4 className="font-semibold text-foreground mb-1">
-              Onboarding AI Assistant
-            </h4>
+            <h4 className="font-semibold text-foreground mb-1">Benefits AI Assistant</h4>
             <p className="text-sm text-muted-foreground max-w-sm mb-6">
-              Ask about your onboarding status, benefits, or request IT help.
+              Ask about your benefits enrollment, available plans, or coverage details.
             </p>
             <div className="flex flex-wrap gap-2 justify-center">
               {[
-                "I am John Smith, what's my onboarding status?",
                 "I am Sarah, can I know my benefits?",
-                "I need help setting up my laptop",
+                "What health insurance plans are available?",
+                "What is the company 401k match?",
               ].map((suggestion) => (
                 <button
                   key={suggestion}
@@ -129,7 +114,7 @@ export function OnboardingChat() {
                     setInput(suggestion);
                     inputRef.current?.focus();
                   }}
-                  className="text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-brand-teal/40 hover:bg-brand-teal/5 transition-colors"
+                  className="text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-brand-green/40 hover:bg-brand-green/5 transition-colors"
                 >
                   {suggestion}
                 </button>
@@ -144,8 +129,8 @@ export function OnboardingChat() {
             className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             {msg.role === "assistant" && (
-              <div className="w-7 h-7 rounded-lg bg-brand-teal/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Bot className="h-4 w-4 text-brand-teal" />
+              <div className="w-7 h-7 rounded-lg bg-brand-green/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Bot className="h-4 w-4 text-brand-green" />
               </div>
             )}
             <div
@@ -167,8 +152,8 @@ export function OnboardingChat() {
 
         {loading && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-lg bg-brand-teal/10 flex items-center justify-center flex-shrink-0">
-              <Bot className="h-4 w-4 text-brand-teal" />
+            <div className="w-7 h-7 rounded-lg bg-brand-green/10 flex items-center justify-center flex-shrink-0">
+              <Bot className="h-4 w-4 text-brand-green" />
             </div>
             <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -177,11 +162,9 @@ export function OnboardingChat() {
         )}
 
         {error && (
-          <div className="mx-auto max-w-md text-center">
-            <p className="text-sm text-red-500 bg-red-50 rounded-lg px-4 py-2">
-              {error}
-            </p>
-          </div>
+          <p className="text-sm text-red-500 bg-red-50 rounded-lg px-4 py-2 text-center">
+            {error}
+          </p>
         )}
 
         <div ref={messagesEndRef} />
@@ -190,10 +173,7 @@ export function OnboardingChat() {
       {/* Input */}
       <div className="px-5 py-4 border-t border-border">
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
+          onSubmit={(e) => { e.preventDefault(); handleSend(); }}
           className="flex items-center gap-2"
         >
           <input
@@ -201,14 +181,14 @@ export function OnboardingChat() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about onboarding, benefits, or IT help..."
+            placeholder="Ask about benefits, enrollment, or coverage..."
             disabled={loading}
-            className="flex-1 bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30 disabled:opacity-50"
+            className="flex-1 bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-green/30 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="w-10 h-10 rounded-xl bg-brand-teal text-white flex items-center justify-center hover:bg-brand-teal/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-10 h-10 rounded-xl bg-brand-green text-white flex items-center justify-center hover:bg-brand-green/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="h-4 w-4" />
           </button>
