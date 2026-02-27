@@ -68,7 +68,7 @@ export function OnboardingDashboard() {
       <HeroBanner
         title="Onboarding"
         subtitle="Track employee onboarding progress and manage tasks with AI assistance"
-        bgColor="bg-gradient-to-r from-brand-teal to-brand-teal/80"
+        bgColor="bg-gradient-to-r from-brand-lime to-brand-lime/80"
         badgeColor="bg-brand-charcoal/80"
         badgeText="AI-Powered"
       />
@@ -78,33 +78,33 @@ export function OnboardingDashboard() {
         <StatsCard
           label="Total Employees"
           value={loading ? "—" : total}
-          bgColor="bg-brand-teal/10"
-          icon={<UserPlus className="h-5 w-5 text-brand-teal" />}
+          bgColor="bg-brand-coral"
+          icon={<UserPlus className="h-5 w-5 text-brand-coral" />}
         />
         <StatsCard
           label="Completed"
           value={loading ? "—" : completed}
-          bgColor="bg-brand-green/10"
-          icon={<CheckCircle2 className="h-5 w-5 text-brand-green" />}
+          bgColor="bg-brand-cyan"
+          icon={<CheckCircle2 className="h-5 w-5 text-brand-cyan" />}
         />
         <StatsCard
           label="In Progress"
           value={loading ? "—" : inProgress}
-          bgColor="bg-brand-gold/10"
-          icon={<Clock className="h-5 w-5 text-brand-gold" />}
+          bgColor="bg-brand-lime"
+          icon={<Clock className="h-5 w-5 text-brand-lime" />}
         />
         <StatsCard
           label="Overall Progress"
           value={loading ? "—" : `${progressPct}%`}
-          bgColor="bg-brand-pink/10"
-          icon={<TrendingUp className="h-5 w-5 text-brand-pink" />}
+          bgColor="bg-brand-yellow"
+          icon={<TrendingUp className="h-5 w-5 text-brand-yellow" />}
         />
       </div>
 
       {/* Employee Table */}
       <div className="bg-white rounded-xl border border-border shadow-sm">
         <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
-          <CalendarDays className="h-4 w-4 text-brand-teal" />
+          <CalendarDays className="h-4 w-4 text-brand-lime" />
           <h3 className="font-semibold text-sm text-foreground">Employee Onboarding Status</h3>
           {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
         </div>

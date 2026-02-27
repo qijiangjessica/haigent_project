@@ -143,8 +143,8 @@ export function AgentChat() {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-brand-gold/10 flex items-center justify-center">
-            <Bot className="h-5 w-5 text-brand-gold" />
+          <div className="w-9 h-9 rounded-xl bg-brand-cyan/10 flex items-center justify-center">
+            <Bot className="h-5 w-5 text-brand-cyan" />
           </div>
           <div>
             <h3 className="font-semibold text-sm text-foreground">
@@ -168,8 +168,8 @@ export function AgentChat() {
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-14 h-14 rounded-2xl bg-brand-gold/10 flex items-center justify-center mb-4">
-              <Bot className="h-7 w-7 text-brand-gold" />
+            <div className="w-14 h-14 rounded-2xl bg-brand-cyan/10 flex items-center justify-center mb-4">
+              <Bot className="h-7 w-7 text-brand-cyan" />
             </div>
             <h4 className="font-semibold text-foreground mb-1">
               Payroll AI Assistant
@@ -190,7 +190,7 @@ export function AgentChat() {
                     setInput(suggestion);
                     inputRef.current?.focus();
                   }}
-                  className="text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-brand-gold/40 hover:bg-brand-gold/5 transition-colors"
+                  className="text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-brand-cyan/40 hover:bg-brand-cyan/5 transition-colors"
                 >
                   {suggestion}
                 </button>
@@ -205,8 +205,8 @@ export function AgentChat() {
             className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             {msg.role === "agent" && (
-              <div className="w-7 h-7 rounded-lg bg-brand-gold/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Bot className="h-4 w-4 text-brand-gold" />
+              <div className="w-7 h-7 rounded-lg bg-brand-cyan/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Bot className="h-4 w-4 text-brand-cyan" />
               </div>
             )}
             <div
@@ -228,8 +228,8 @@ export function AgentChat() {
 
         {loading && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-lg bg-brand-gold/10 flex items-center justify-center flex-shrink-0">
-              <Bot className="h-4 w-4 text-brand-gold" />
+            <div className="w-7 h-7 rounded-lg bg-brand-cyan/10 flex items-center justify-center flex-shrink-0">
+              <Bot className="h-4 w-4 text-brand-cyan" />
             </div>
             <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -264,12 +264,12 @@ export function AgentChat() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about payroll..."
             disabled={loading}
-            className="flex-1 bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-gold/30 disabled:opacity-50"
+            className="flex-1 bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="w-10 h-10 rounded-xl bg-brand-gold text-white flex items-center justify-center hover:bg-brand-gold/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-10 h-10 rounded-xl bg-brand-cyan text-white flex items-center justify-center hover:bg-brand-cyan/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="h-4 w-4" />
           </button>

@@ -53,7 +53,7 @@ export const AI_MODULES: AIModule[] = [
     name: "Onboarding",
     slug: "onboarding",
     icon: UserPlus,
-    accentColor: "brand-teal",
+    accentColor: "brand-lime",
     enabled: true,
     description: "AI-powered onboarding assistant connected to ServiceNow Virtual Agent",
     subPages: [
@@ -64,7 +64,7 @@ export const AI_MODULES: AIModule[] = [
     name: "Benefits",
     slug: "benefits",
     icon: Heart,
-    accentColor: "brand-green",
+    accentColor: "brand-yellow",
     enabled: true,
     description: "AI-powered benefits assistant connected to ServiceNow",
     subPages: [
@@ -75,7 +75,7 @@ export const AI_MODULES: AIModule[] = [
     name: "Payroll",
     slug: "payroll",
     icon: DollarSign,
-    accentColor: "brand-gold",
+    accentColor: "brand-cyan",
     enabled: true,
     description: "AI-powered payroll assistant connected to Salesforce Agentforce",
     subPages: [

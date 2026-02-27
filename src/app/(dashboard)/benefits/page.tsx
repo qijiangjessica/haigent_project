@@ -25,7 +25,7 @@ export default function BenefitsPage() {
                 key={link.label}
                 className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors cursor-pointer"
               >
-                <div className="w-2 h-2 rounded-full bg-brand-green" />
+                <div className="w-2 h-2 rounded-full bg-brand-yellow" />
                 <div>
                   <p className="text-sm font-medium text-foreground">{link.label}</p>
                   <p className="text-xs text-muted-foreground">{link.description}</p>

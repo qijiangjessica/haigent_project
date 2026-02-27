@@ -62,7 +62,7 @@ export function BenefitsDashboard() {
       <HeroBanner
         title="Benefits"
         subtitle="Manage employee benefits enrollment and explore available plans"
-        bgColor="bg-gradient-to-r from-brand-green to-brand-green/80"
+        bgColor="bg-gradient-to-r from-brand-yellow to-brand-yellow/80"
         badgeColor="bg-brand-charcoal/80"
         badgeText="AI-Powered"
       />
@@ -72,26 +72,26 @@ export function BenefitsDashboard() {
         <StatsCard
           label="Benefit Plans"
           value={loading ? "—" : activeTypes}
-          bgColor="bg-brand-green/10"
-          icon={<Heart className="h-5 w-5 text-brand-green" />}
+          bgColor="bg-brand-coral"
+          icon={<Heart className="h-5 w-5 text-brand-coral" />}
         />
         <StatsCard
           label="Enrolled"
           value={loading ? "—" : enrolled}
-          bgColor="bg-brand-teal/10"
-          icon={<CheckCircle2 className="h-5 w-5 text-brand-teal" />}
+          bgColor="bg-brand-cyan"
+          icon={<CheckCircle2 className="h-5 w-5 text-brand-cyan" />}
         />
         <StatsCard
           label="Pending Enrollment"
           value={loading ? "—" : pending}
-          bgColor="bg-brand-gold/10"
-          icon={<Clock className="h-5 w-5 text-brand-gold" />}
+          bgColor="bg-brand-lime"
+          icon={<Clock className="h-5 w-5 text-brand-lime" />}
         />
         <StatsCard
           label="Total Enrollments"
           value={loading ? "—" : enrollments.length}
-          bgColor="bg-brand-pink/10"
-          icon={<Users className="h-5 w-5 text-brand-pink" />}
+          bgColor="bg-brand-yellow"
+          icon={<Users className="h-5 w-5 text-brand-yellow" />}
         />
       </div>
 
@@ -105,7 +105,7 @@ export function BenefitsDashboard() {
       {benefitTypes.length > 0 && (
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
-            <DollarSign className="h-4 w-4 text-brand-green" />
+            <DollarSign className="h-4 w-4 text-brand-yellow" />
             <h3 className="font-semibold text-sm text-foreground">Available Benefit Plans</h3>
             {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
           </div>
@@ -142,7 +142,7 @@ export function BenefitsDashboard() {
       {enrollments.length > 0 && (
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
-            <Users className="h-4 w-4 text-brand-green" />
+            <Users className="h-4 w-4 text-brand-yellow" />
             <h3 className="font-semibold text-sm text-foreground">Enrollment Overview</h3>
           </div>
           <div className="divide-y divide-border">
@@ -163,7 +163,7 @@ export function BenefitsDashboard() {
                   )}
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                     e.enrollment_status === "enrolled"
-                      ? "bg-brand-green/10 text-brand-green"
+                      ? "bg-brand-yellow/10 text-brand-yellow"
                       : e.enrollment_status === "pending"
                         ? "bg-brand-gold/10 text-brand-gold"
                         : e.enrollment_status === "declined"

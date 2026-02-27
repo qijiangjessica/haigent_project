@@ -19,8 +19,8 @@ export function StatsCard({ label, value, bgColor, href, icon }: StatsCardProps)
               {icon}
             </div>
           )}
-          <p className="text-xs text-brand-charcoal/70 font-medium">{label}</p>
-          <p className="text-2xl font-bold text-brand-charcoal">{value}</p>
+          <p className="text-xs text-white/80 font-medium">{label}</p>
+          <p className="text-2xl font-bold text-white">{value}</p>
         </div>
         <ArrowRight className="h-5 w-5 text-brand-charcoal/40 opacity-0 group-hover:opacity-100 transition-all translate-x-0 group-hover:translate-x-1" />
       </div>

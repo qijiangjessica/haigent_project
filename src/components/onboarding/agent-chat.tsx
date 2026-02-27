@@ -83,8 +83,8 @@ export function OnboardingChat() {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-brand-teal/10 flex items-center justify-center">
-            <Bot className="h-5 w-5 text-brand-teal" />
+          <div className="w-9 h-9 rounded-xl bg-brand-lime/10 flex items-center justify-center">
+            <Bot className="h-5 w-5 text-brand-lime" />
           </div>
           <div>
             <h3 className="font-semibold text-sm text-foreground">
@@ -108,8 +108,8 @@ export function OnboardingChat() {
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {display.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-14 h-14 rounded-2xl bg-brand-teal/10 flex items-center justify-center mb-4">
-              <Bot className="h-7 w-7 text-brand-teal" />
+            <div className="w-14 h-14 rounded-2xl bg-brand-lime/10 flex items-center justify-center mb-4">
+              <Bot className="h-7 w-7 text-brand-lime" />
             </div>
             <h4 className="font-semibold text-foreground mb-1">
               Onboarding AI Assistant
@@ -129,7 +129,7 @@ export function OnboardingChat() {
                     setInput(suggestion);
                     inputRef.current?.focus();
                   }}
-                  className="text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-brand-teal/40 hover:bg-brand-teal/5 transition-colors"
+                  className="text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-brand-lime/40 hover:bg-brand-lime/5 transition-colors"
                 >
                   {suggestion}
                 </button>
@@ -144,8 +144,8 @@ export function OnboardingChat() {
             className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             {msg.role === "assistant" && (
-              <div className="w-7 h-7 rounded-lg bg-brand-teal/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Bot className="h-4 w-4 text-brand-teal" />
+              <div className="w-7 h-7 rounded-lg bg-brand-lime/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Bot className="h-4 w-4 text-brand-lime" />
               </div>
             )}
             <div
@@ -167,8 +167,8 @@ export function OnboardingChat() {
 
         {loading && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-lg bg-brand-teal/10 flex items-center justify-center flex-shrink-0">
-              <Bot className="h-4 w-4 text-brand-teal" />
+            <div className="w-7 h-7 rounded-lg bg-brand-lime/10 flex items-center justify-center flex-shrink-0">
+              <Bot className="h-4 w-4 text-brand-lime" />
             </div>
             <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -203,12 +203,12 @@ export function OnboardingChat() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about onboarding, benefits, or IT help..."
             disabled={loading}
-            className="flex-1 bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30 disabled:opacity-50"
+            className="flex-1 bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="w-10 h-10 rounded-xl bg-brand-teal text-white flex items-center justify-center hover:bg-brand-teal/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-10 h-10 rounded-xl bg-brand-lime text-white flex items-center justify-center hover:bg-brand-lime/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="h-4 w-4" />
           </button>

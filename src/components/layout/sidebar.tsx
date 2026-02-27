@@ -39,21 +39,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="h-20 flex items-center px-5 border-b border-white/5">
           <Link href="/schedule" className="flex items-center gap-3 flex-1">
             <div className="relative">
-              <div className="w-10 h-10 rounded-xl bg-brand-gold flex items-center justify-center">
-                <span className="text-white font-bold text-xl">H</span>
+              <div className="w-10 h-10 rounded-xl bg-brand-yellow flex items-center justify-center">
+                <span className="text-brand-charcoal font-bold text-xl">H</span>
               </div>
-              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-brand-green rounded-full animate-pulse" />
+              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-brand-lime rounded-full animate-pulse" />
             </div>
             <div>
               <span className="text-white font-bold text-lg">Haigent</span>
-              <p
-                className={cn(
-                  "text-[10px] font-semibold uppercase tracking-wider",
-                  activeModule?.accentColor === "brand-gold"
-                    ? "text-brand-gold"
-                    : "text-brand-pink"
-                )}
-              >
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-brand-yellow/80">
                 AI Platform
               </p>
             </div>
