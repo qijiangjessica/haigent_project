@@ -28,6 +28,57 @@ function isTrue(val: string | boolean | undefined): boolean {
   return false;
 }
 
+const SAMPLE_RECORDS: OnboardingRecord[] = [
+  {
+    sys_id: "sample-001",
+    employee_name: "Sarah Chen",
+    employee_id: "EMP-1042",
+    position: "Data Analyst",
+    department: "Analytics",
+    office_location: "Seattle, WA",
+    onboarding_status: "completed",
+    start_date: "2025-01-15",
+    equipment_assigned: true,
+    access_provisioned: true,
+    documents_completed: true,
+    training_scheduled: true,
+    workspace_prepared: true,
+    benefits_enrolled: true,
+  },
+  {
+    sys_id: "sample-002",
+    employee_name: "Marcus Johnson",
+    employee_id: "EMP-1043",
+    position: "Software Engineer",
+    department: "Engineering",
+    office_location: "Austin, TX",
+    onboarding_status: "in_progress",
+    start_date: "2025-02-03",
+    equipment_assigned: true,
+    access_provisioned: true,
+    documents_completed: true,
+    training_scheduled: false,
+    workspace_prepared: false,
+    benefits_enrolled: false,
+  },
+  {
+    sys_id: "sample-003",
+    employee_name: "Emily Rodriguez",
+    employee_id: "EMP-1044",
+    position: "Product Manager",
+    department: "Product",
+    office_location: "New York, NY",
+    onboarding_status: "pending",
+    start_date: "2025-03-10",
+    equipment_assigned: false,
+    access_provisioned: false,
+    documents_completed: false,
+    training_scheduled: false,
+    workspace_prepared: false,
+    benefits_enrolled: false,
+  },
+];
+
 export function OnboardingDashboard() {
   const [records, setRecords] = useState<OnboardingRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,7 +89,7 @@ export function OnboardingDashboard() {
       .then((r) => r.json())
       .then((data) => {
         if (data.error) setError(data.error);
-        else setRecords(data.records ?? []);
+        else setRecords([...(data.records ?? []), ...SAMPLE_RECORDS]);
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
@@ -151,11 +202,11 @@ export function OnboardingDashboard() {
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                           record.onboarding_status === "completed"
-                            ? "bg-brand-green/10 text-brand-green"
+                            ? "bg-brand-lime/10 text-brand-lime"
                             : record.onboarding_status === "in_progress"
-                              ? "bg-brand-gold/10 text-brand-gold"
+                              ? "bg-brand-cyan/10 text-brand-cyan"
                               : record.onboarding_status === "on_hold"
-                                ? "bg-red-100 text-red-600"
+                                ? "bg-brand-coral/10 text-brand-coral"
                                 : "bg-muted text-muted-foreground"
                         }`}
                       >
@@ -179,7 +230,7 @@ export function OnboardingDashboard() {
                         key={t.key}
                         className={`text-xs px-2 py-0.5 rounded-md ${
                           isTrue(t.val)
-                            ? "bg-brand-green/10 text-brand-green"
+                            ? "bg-brand-lime/10 text-brand-lime"
                             : "bg-muted text-muted-foreground"
                         }`}
                       >

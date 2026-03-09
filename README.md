@@ -1,10 +1,21 @@
 # Haigent — AI-Powered HR Platform
 
-An AI-powered HR platform that integrates **Claude AI (Anthropic)**, **Salesforce Agentforce**, and **ServiceNow** to automate employee onboarding, benefits management, and payroll assistance through intelligent AI agents.
+A combined **marketing website + HR demo application** built with Next.js 15. It showcases Haigent.ai's AI agent orchestration platform for HR automation, integrating **Claude AI (Anthropic)**, **Salesforce Agentforce**, and **ServiceNow**.
 
 ---
 
-## Features
+## Overview
+
+The app has two distinct sections served from the same Next.js project via route groups:
+
+| Section | Route Group | URL Paths | Purpose |
+|---|---|---|---|
+| **Marketing site** | `(marketing)` | `/`, `/products`, `/use-cases`, `/templates`, `/company`, `/demo`, `/terms` | Public-facing website |
+| **HR Demo app** | `(dashboard)` | `/schedule`, `/sourcing`, `/onboarding`, `/benefits`, `/payroll` | Live AI agent demos |
+
+---
+
+## HR Demo Modules
 
 | Module | Status | AI Engine | Backend |
 |---|---|---|---|
@@ -18,10 +29,26 @@ An AI-powered HR platform that integrates **Claude AI (Anthropic)**, **Salesforc
 
 ---
 
+## Marketing Pages
+
+| Page | Path | Description |
+|---|---|---|
+| Home | `/` | Hero, agent carousel, benefits, how it works |
+| Products | `/products` | All 7 AI agents overview + grid |
+| Product Detail | `/products/[slug]` | Per-agent deep-dive (intro, benefits, workflows, integrations) |
+| Use Cases | `/use-cases` | Workflow table, industry packs, activation steps |
+| Templates | `/templates` | Filterable HR workflow template library |
+| Company | `/company` | About, mission, vision, values, team CTA |
+| Demo | `/demo` | Demo request form |
+| Terms | `/terms` | Terms and conditions |
+
+---
+
 ## Tech Stack
 
-- **Framework:** Next.js 15 (App Router), React 19, TypeScript
-- **Styling:** Tailwind CSS, shadcn/ui
+- **Framework:** Next.js 16 (App Router), React 19, TypeScript
+- **Styling:** Tailwind CSS v4, shadcn/ui
+- **Animation:** Framer Motion
 - **AI (Onboarding & Benefits):** Anthropic Claude via `@anthropic-ai/sdk`
 - **AI (Payroll):** Salesforce Agentforce Agent API
 - **HRIS Backend:** ServiceNow Table REST API
@@ -45,7 +72,23 @@ cd haigent-project
 npm install
 ```
 
-### 2. Configure environment variables
+### 2. Copy public assets
+
+Copy the following from `haigent.ai/public/` into `haigent-project/public/`:
+
+```
+/animations/          # Robot animation videos (7 agents × multiple states)
+/svg_I/               # SVG icon set used by SvgIcon component
+/all_robo.png         # Group robot image (used in CTAs)
+/hero_image.png       # Product hero images
+/hero_image_2.png
+/hero_image_3.png
+/hero_image_4.png
+/Logo_simple_black.png
+/models_poses/        # Individual robot pose images
+```
+
+### 3. Configure environment variables
 
 Create a `.env.local` file in the project root:
 
@@ -69,13 +112,13 @@ SERVICENOW_PASSWORD=your_password
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-### 3. Run the development server
+### 4. Run the development server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000) — the marketing home page loads at `/`. The HR demo dashboard is at `/schedule`.
 
 ---
 
@@ -84,30 +127,59 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ```
 src/
 ├── app/
-│   ├── (dashboard)/
-│   │   ├── schedule/          # Interview scheduling module
-│   │   ├── sourcing/          # Candidate sourcing module
-│   │   ├── onboarding/        # Onboarding module
-│   │   ├── benefits/          # Benefits module
-│   │   └── payroll/           # Payroll module (Agentforce)
+│   ├── (marketing)/                  # Marketing site layout (Header + Footer)
+│   │   ├── page.tsx                  # Home page
+│   │   ├── products/
+│   │   │   ├── page.tsx              # All products overview
+│   │   │   └── [slug]/page.tsx       # Individual product detail
+│   │   ├── use-cases/page.tsx
+│   │   ├── templates/page.tsx
+│   │   ├── company/page.tsx
+│   │   ├── demo/page.tsx
+│   │   └── terms/page.tsx
+│   ├── (dashboard)/                  # HR demo layout (Sidebar)
+│   │   ├── schedule/
+│   │   ├── sourcing/
+│   │   ├── onboarding/
+│   │   ├── benefits/
+│   │   └── payroll/
 │   └── api/
-│       ├── agent/             # Salesforce Agentforce proxy
+│       ├── agent/                    # Salesforce Agentforce proxy
 │       ├── onboarding/
-│       │   ├── chat/          # Claude AI agentic chat
-│       │   └── records/       # Fetch onboarding records from ServiceNow
+│       │   ├── chat/                 # Claude AI agentic chat
+│       │   └── records/              # ServiceNow onboarding records
 │       └── benefits/
-│           ├── chat/          # Claude AI agentic chat
-│           └── records/       # Fetch benefit types + enrollments
+│           ├── chat/                 # Claude AI agentic chat
+│           └── records/              # ServiceNow benefit records
 ├── components/
-│   ├── onboarding/            # Dashboard + AI chat UI
-│   ├── benefits/              # Dashboard + AI chat UI
-│   ├── payroll/               # Agentforce chat UI
-│   ├── layout/                # Sidebar + Header
-│   └── shared/                # Reusable UI components
+│   ├── marketing/
+│   │   ├── Layout/                   # Marketing Header + Footer
+│   │   ├── Home/                     # Home page sections
+│   │   ├── Products/                 # Products page sections
+│   │   ├── UseCases/                 # Use cases page sections
+│   │   ├── Templates/                # Templates page sections
+│   │   ├── Company/                  # Company page sections
+│   │   └── Terms/                    # Terms page content
+│   ├── onboarding/                   # Dashboard + AI chat UI
+│   ├── benefits/                     # Dashboard + AI chat UI
+│   ├── payroll/                      # Agentforce chat UI
+│   ├── layout/                       # Dashboard sidebar + header
+│   ├── shared/                       # Reusable dashboard components
+│   ├── ui/                           # shadcn/ui + custom UI primitives
+│   ├── ProductIntroduction.tsx       # Product detail components
+│   ├── ProductHowItWorks.tsx
+│   ├── ProductBenefits.tsx
+│   ├── ProductIntegrations.tsx
+│   ├── ProductWorkflows.tsx
+│   ├── ProductCta.tsx
+│   ├── hero-with-mockup.tsx
+│   └── bento-grid_2.tsx
+├── data/
+│   └── products.ts                   # Product data for all 7 agents
 └── lib/
-    ├── servicenow.ts          # ServiceNow Table API client
-    ├── salesforce.ts          # Salesforce OAuth + Agentforce client
-    └── modules.ts             # Module registry and config
+    ├── servicenow.ts                 # ServiceNow Table API client
+    ├── salesforce.ts                 # Salesforce OAuth + Agentforce client
+    └── modules.ts                    # Module registry and config
 ```
 
 ---
@@ -215,4 +287,4 @@ Modules are registered in [`src/lib/modules.ts`](src/lib/modules.ts). To enable 
 
 - [`PROJECT.md`](PROJECT.md) — Full technical architecture and integration details
 - [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) — Guided demo walkthrough with talking points
-- [`Haigent_Demo.pptx`](Haigent_Demo.pptx) — Presentation slides (10 slides)
+- [`Haigent_Demo.pptx`](Haigent_Demo.pptx) — Presentation slides
