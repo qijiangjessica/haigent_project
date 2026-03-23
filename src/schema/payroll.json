@@ -1,0 +1,173 @@
+{
+	"schema": {
+		"version": "1.0",
+		"domain": "Payroll",
+		"description": "Payroll schema representing employee compensation records and their associated deductions. One payroll record is created per employee per pay period. Deductions are stored as child records linked to the parent payroll.",
+		"objects": {
+			"Payroll": {
+				"description": "Header record representing a single paycheck for one employee covering one pay period.",
+				"primaryKey": "id",
+				"fields": {
+					"id": {
+						"type": "String",
+						"required": true,
+						"description": "Unique identifier for this payroll record.",
+						"example_format": "PAY-{YEAR}-{SEQ}"
+					},
+					"employeeId": {
+						"type": "String",
+						"required": true,
+						"description": "Reference to the employee receiving this payment.",
+						"references": "Employee.id"
+					},
+					"periodStart": {
+						"type": "Date",
+						"required": true,
+						"description": "First day of the work period being compensated. Combined with periodEnd, defines the exact window of work this paycheck covers."
+					},
+					"periodEnd": {
+						"type": "Date",
+						"required": true,
+						"description": "Last day of the work period being compensated. Must be after periodStart."
+					},
+					"payDate": {
+						"type": "Date",
+						"required": true,
+						"description": "Actual date the payment is disbursed to the employee. Always falls after periodEnd due to payroll processing time (typically 2-3 business days)."
+					},
+					"grossPay": {
+						"type": "Decimal",
+						"required": true,
+						"description": "Total earnings before any deductions are applied. This is the base amount from which all deductions are calculated."
+					},
+					"totalDeductions": {
+						"type": "Decimal",
+						"required": true,
+						"description": "Pre-computed sum of all linked PayrollDeduction.amount values. Must always equal the sum of child deduction records. Stored   for fast display without re-summing.",
+						"rule": "totalDeductions == SUM(PayrollDeduction.amount WHERE payrollId == this.id)"
+					},
+					"netPay": {
+						"type": "Decimal",
+						"required": true,
+						"description": "The actual take-home amount the employee receives after all deductions.",
+						"rule": "netPay == grossPay - totalDeductions"
+					},
+					"status": {
+						"type": "Enum",
+						"required": true,
+						"values": {
+							"Pending": "Payroll record exists but payment has not been processed or disbursed yet.",
+							"Paid": "Payment has been successfully disbursed to the employee on payDate."
+						},
+						"description": "Tracks whether this paycheck has been processed and paid out."
+					},
+					"paymentMethod": {
+						"type": "Enum",
+						"required": true,
+						"values": {
+							"Direct Deposit": "Funds transferred electronically to the employee's bank account.",
+							"Check": "Physical check issued to the employee.",
+							"Wire": "International or large-amount wire transfer."
+						},
+						"description": "The method used to disburse the payment to the employee."
+					}
+				}
+			},
+			"PayrollDeduction": {
+				"description": "Line item record representing a single deduction applied to a payroll record. Multiple deductions can exist per payroll. The sum of all deductions for a payroll must equal Payroll.totalDeductions.",
+				"primaryKey": "id",
+				"foreignKey": {
+					"field": "payrollId",
+					"references": "Payroll.id",
+					"relationship": "many-to-one",
+					"description": "Many deductions belong to one payroll record."
+				},
+				"fields": {
+					"id": {
+						"type": "String",
+						"required": true,
+						"description": "Unique identifier for this deduction line item.",
+						"example_format": "DED-{SEQ}"
+					},
+					"payrollId": {
+						"type": "String",
+						"required": true,
+						"description": "Links this deduction to its parent Payroll record.",
+						"references": "Payroll.id"
+					},
+					"category": {
+						"type": "Enum",
+						"required": true,
+						"values": {
+							"Tax": "Government-mandated deductions such as federal and state income tax.",
+							"Insurance": "Benefit-related deductions such as health, dental, or vision insurance premiums.",
+							"Retirement": "Contributions to retirement savings plans such as 401k or pension.",
+							"Garnishment": "Court-ordered deductions such as child support or debt repayment.",
+							"Other": "Any deduction that does not fall into the above categories."
+						},
+						"description": "High-level grouping of what the deduction represents. Used for reporting and filtering."
+					},
+					"type": {
+						"type": "String",
+						"required": true,
+						"description": "Specific label for this deduction as it would appear on a pay stub.",
+						"examples": [
+							"Federal Tax",
+							"State Tax",
+							"Health Insurance",
+							"Dental",
+							"Vision",
+							"401k",
+							"Child Support"
+						]
+					},
+					"calcMethod": {
+						"type": "Enum",
+						"required": true,
+						"values": {
+							"Percentage": "Amount is calculated as a percentage of Payroll.grossPay. Higher earners pay more.",
+							"Flat": "Amount is a fixed value regardless of the employee's gross pay."
+						},
+						"description": "Defines how the deduction amount is derived. Critical for understanding why two employees with different salaries may have   different deduction amounts for the same deduction type."
+					},
+					"amount": {
+						"type": "Decimal",
+						"required": true,
+						"description": "Actual dollar amount deducted for this pay period. For Percentage-based deductions this will scale with grossPay. For Flat   deductions this remains constant."
+					}
+				}
+			}
+		},
+		"relationships": [
+			{
+				"from": "Payroll",
+				"to": "PayrollDeduction",
+				"type": "one-to-many",
+				"on": "Payroll.id == PayrollDeduction.payrollId",
+				"description": "One payroll record has many deduction line items. Deleting a payroll record should cascade-delete all its deductions."
+			}
+		],
+		"businessRules": [
+			{
+				"rule": "totalDeductions integrity",
+				"description": "Payroll.totalDeductions must always equal the sum of all linked PayrollDeduction.amount values.",
+				"expression": "Payroll.totalDeductions == SUM(PayrollDeduction.amount WHERE payrollId == Payroll.id)"
+			},
+			{
+				"rule": "netPay derivation",
+				"description": "Payroll.netPay is always derived. Never set independently.",
+				"expression": "Payroll.netPay == Payroll.grossPay - Payroll.totalDeductions"
+			},
+			{
+				"rule": "payDate ordering",
+				"description": "The pay date must always fall after the period end date.",
+				"expression": "Payroll.payDate > Payroll.periodEnd"
+			},
+			{
+				"rule": "period ordering",
+				"description": "The period end date must always be after the period start date.",
+				"expression": "Payroll.periodEnd > Payroll.periodStart"
+			}
+		]
+	}
+}
