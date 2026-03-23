@@ -1,0 +1,333 @@
+{
+	"schema": {
+		"version": "1.0",
+		"domain": "EmployeeBenefits",
+		"description": "Benefits schema covering the full lifecycle of employee benefits — from catalog discovery to inquiry submission, HR assignment, and resolution tracking. Built across two tables: a read-mostly catalog of available benefit plans, and a transactional inquiry table tracking employee questions and requests.",
+		"sharedEnums": {
+			"benefit_category": {
+				"description": "Standardized benefit category list shared across both BenefitsCatalog and BenefitsInquiry. Used to group plans and filter inquiries by type.",
+				"values": {
+					"health": "Health and medical insurance plans including hospital, prescription, and specialist coverage.",
+					"dental": "Dental care plans covering preventive, basic, and major services.",
+					"vision": "Vision care plans covering eye exams, glasses, and contact lenses.",
+					"retirement": "Retirement savings plans such as 401k, pension, or RRSP.",
+					"life_insurance": "Life insurance coverage provided to employees or available for purchase.",
+					"disability": "Short-term and long-term disability income protection plans.",
+					"wellness": "Wellness programs including gym subsidies, mental health support, and health screenings.",
+					"time_off": "Leave policies including vacation, sick leave, parental leave, and sabbaticals.",
+					"employee_assistance": "Employee Assistance Programs (EAP) offering counselling and support services.",
+					"professional_development": "Learning, training, tuition reimbursement, and certification support.",
+					"commuter": "Commuter benefits including transit passes, parking subsidies, and bike programs.",
+					"other": "Any benefit that does not fall into the above categories."
+				}
+			}
+		},
+		"objects": {
+			"BenefitsCatalog": {
+				"description": "Reference table listing every benefit plan the company offers. Read-mostly — updated by HR during open enrollment or when plans change. Queried by employees and the AI agent to discover available benefits.",
+				"primaryKey": "id",
+				"searchable": true,
+				"fields": {
+					"id": {
+						"type": "String",
+						"required": true,
+						"description": "Unique system identifier for this benefit plan record.",
+						"example_format": "BEN-{SEQ}"
+					},
+					"benefit_name": {
+						"type": "String",
+						"maxLength": 100,
+						"required": true,
+						"description": "Human-readable name of the benefit plan as it appears in communications and the employee portal."
+					},
+					"benefit_description": {
+						"type": "String",
+						"maxLength": 1000,
+						"required": true,
+						"description": "Full description of what the benefit covers, exclusions, and key features. Primary text the AI agent uses to answer employee questions."
+					},
+					"category": {
+						"type": "Enum",
+						"required": true,
+						"values": "see sharedEnums.benefit_category",
+						"description": "Category this benefit plan belongs to. Links to the same category list used in BenefitsInquiry for filtering."
+					},
+					"eligibility": {
+						"type": "String",
+						"maxLength": 500,
+						"required": false,
+						"description": "Who qualifies for this benefit and under what conditions (e.g. employment type, tenure, location). Null means universally available."
+					},
+					"cost": {
+						"type": "Decimal",
+						"required": true,
+						"default": 0,
+						"description": "Monthly cost charged to the employee. Zero means fully employer-funded.",
+						"rule": "employee_net_cost = cost - employer_contribution is never applicable; cost and employer_contribution are independent values"
+					},
+					"employer_contribution": {
+						"type": "Decimal",
+						"required": true,
+						"default": 0,
+						"description": "Monthly amount the employer contributes toward this benefit. The total plan value = cost + employer_contribution."
+					},
+					"total_plan_value": {
+						"type": "Decimal",
+						"required": false,
+						"description": "Derived total monthly value of this benefit plan.",
+						"rule": "total_plan_value == cost + employer_contribution"
+					},
+					"enrollment_period": {
+						"type": "String",
+						"maxLength": 200,
+						"required": false,
+						"description": "When employees can enroll or make changes. Typically open enrollment window plus new hire grace period."
+					},
+					"contact_info": {
+						"type": "String",
+						"maxLength": 300,
+						"required": false,
+						"description": "HR or provider contact details for employees who need direct assistance with this benefit."
+					},
+					"website_url": {
+						"type": "String",
+						"maxLength": 500,
+						"required": false,
+						"description": "URL of the provider portal or plan details page where employees can view full coverage information."
+					},
+					"provider": {
+						"type": "String",
+						"maxLength": 200,
+						"required": false,
+						"description": "Name of the insurance company or vendor administering this benefit (e.g. Blue Cross, Delta Dental)."
+					},
+					"keywords": {
+						"type": "String",
+						"maxLength": 500,
+						"required": false,
+						"description": "Space-separated search terms that help employees and the AI agent find this benefit. Supplements benefit_description for natural language queries.",
+						"example": "dental crown filling orthodontics braces cleaning"
+					},
+					"active": {
+						"type": "Boolean",
+						"required": true,
+						"default": true,
+						"description": "Whether this benefit is currently available for enrollment. Inactive plans remain in the catalog for historical reference but are excluded from search results."
+					}
+				}
+			},
+			"BenefitsInquiry": {
+				"description": "Transactional table that records every employee benefits interaction — searches, enrollment requests, information questions, change requests, and complaints. One record per employee interaction. Managed by HR and partially automated.",
+				"primaryKey": "id",
+				"fields": {
+					"id": {
+						"type": "String",
+						"required": true,
+						"description": "Unique system identifier for this inquiry.",
+						"example_format": "INQ-{SEQ}"
+					},
+					"employee": {
+						"type": "String",
+						"required": true,
+						"references": "sys_user.sys_id",
+						"description": "The employee who submitted this inquiry. References the ServiceNow sys_user table."
+					},
+					"inquiry_type": {
+						"type": "Enum",
+						"required": true,
+						"values": {
+							"search": "Employee searched for benefit information — no action required, informational only.",
+							"enrollment": "Employee wants to enroll in a benefit plan. Requires HR action to process.",
+							"information": "Employee is asking a question about a benefit. Requires HR to provide an answer.",
+							"change": "Employee wants to modify an existing benefit election (e.g. add a dependent).",
+							"complaint": "Employee has an issue or grievance about a benefit. Elevated priority, requires prompt response."
+						},
+						"description": "The nature of the employee interaction. Drives automatic priority assignment via automation."
+					},
+					"benefit_category": {
+						"type": "Enum",
+						"required": false,
+						"values": "see sharedEnums.benefit_category",
+						"description": "The benefit category this inquiry relates to. Soft link to BenefitsCatalog — not a hard FK to a specific plan."
+					},
+					"search_terms": {
+						"type": "String",
+						"maxLength": 300,
+						"required": false,
+						"description": "The exact terms the employee typed or spoke when searching. Populated for inquiry_type='search'. Used for analytics."
+					},
+					"description": {
+						"type": "String",
+						"maxLength": 1000,
+						"required": true,
+						"description": "Full text of the employee's question, request, or complaint. Primary field HR reads to understand what is needed."
+					},
+					"status": {
+						"type": "Enum",
+						"required": true,
+						"default": "open",
+						"values": {
+							"open": "Inquiry has been submitted but no HR action has been taken yet.",
+							"in_progress": "An HR representative is actively working on this inquiry.",
+							"resolved": "HR has provided an answer or completed the requested action. Awaiting employee confirmation.",
+							"closed": "Inquiry is fully complete. No further action required."
+						},
+						"description": "Lifecycle state of the inquiry. Progresses from open through to closed."
+					},
+					"priority": {
+						"type": "Enum",
+						"required": true,
+						"default": "medium",
+						"values": {
+							"low": "Informational or non-urgent inquiry with no time sensitivity.",
+							"medium": "Standard inquiry requiring a response within normal SLA.",
+							"high": "Urgent inquiry — typically enrollment deadlines or complaints — requiring prompt attention.",
+							"urgent": "Critical issue requiring immediate HR response."
+						},
+						"description": "Urgency level of the inquiry. Automatically set by automation based on inquiry_type. complaint → high, enrollment → medium. Can be overridden by HR."
+					},
+					"assigned_to": {
+						"type": "String",
+						"required": false,
+						"references": "sys_user.sys_id",
+						"description": "The HR representative handling this inquiry. Automatically populated by automation when the record is created. Null until automation runs."
+					},
+					"resolution_notes": {
+						"type": "String",
+						"maxLength": 1000,
+						"required": false,
+						"description": "HR's response, answer, or action taken. Must be populated before status can be set to 'resolved'."
+					},
+					"inquiry_date": {
+						"type": "DateTime",
+						"required": true,
+						"description": "Timestamp when the inquiry was created. Automatically set to current date/time on record creation. Never manually edited."
+					},
+					"satisfaction_rating": {
+						"type": "Integer",
+						"required": false,
+						"min": 1,
+						"max": 5,
+						"description": "Employee's satisfaction score after resolution (1 = very dissatisfied, 5 = very satisfied). Only meaningful when status is 'resolved' or 'closed'. Never auto-set."
+					}
+				}
+			}
+		},
+		"relationships": [
+			{
+				"from": "BenefitsInquiry.employee",
+				"to": "sys_user.sys_id",
+				"type": "many-to-one",
+				"description": "Many inquiries can belong to one employee."
+			},
+			{
+				"from": "BenefitsInquiry.assigned_to",
+				"to": "sys_user.sys_id",
+				"type": "many-to-one",
+				"description": "Many inquiries can be assigned to one HR user."
+			},
+			{
+				"from": "BenefitsInquiry.benefit_category",
+				"to": "BenefitsCatalog.category",
+				"type": "soft-reference",
+				"description": "benefit_category on an inquiry matches the same enum used in the catalog but does NOT reference a specific catalog record. An inquiry about 'dental' applies to all active dental plans, not one specific row."
+			},
+			{
+				"from": "BenefitsCatalog",
+				"to": "BenefitsInquiry",
+				"type": "lookup-triggers-creation",
+				"description": "An employee browsing BenefitsCatalog may submit a BenefitsInquiry referencing the category they found. No hard FK — the link is through benefit_category."
+			}
+		],
+		"automationRules": [
+			{
+				"rule": "auto_assign_inquiry",
+				"trigger": "on create or update of BenefitsInquiry",
+				"description": "Finds an active HR user (role contains 'hr') and sets assigned_to automatically. If no HR user is found, assigned_to remains null.",
+				"fields_written": [
+					"assigned_to"
+				]
+			},
+			{
+				"rule": "auto_priority_by_type",
+				"trigger": "on create or update of BenefitsInquiry",
+				"description": "Sets priority based on inquiry_type. complaint → high, enrollment → medium. Other types are not overridden by this rule.",
+				"fields_written": [
+					"priority"
+				],
+				"expression": "inquiry_type == 'complaint' → priority = 'high' | inquiry_type == 'enrollment' → priority = 'medium'"
+			},
+			{
+				"rule": "notify_status_change",
+				"trigger": "when BenefitsInquiry.status changes",
+				"description": "Logs a notification message when status transitions. Does not send email — informational log only.",
+				"fields_written": []
+			},
+			{
+				"rule": "track_search_analytics",
+				"trigger": "when BenefitsInquiry with inquiry_type='search' is created",
+				"description": "Logs search_terms and benefit_category for analytics. Does not write back to the record.",
+				"fields_written": []
+			}
+		],
+		"businessRules": [
+			{
+				"rule": "resolution_requires_notes",
+				"description": "BenefitsInquiry.status cannot be set to 'resolved' unless resolution_notes is populated.",
+				"expression": "status == 'resolved' REQUIRES resolution_notes != null"
+			},
+			{
+				"rule": "satisfaction_timing",
+				"description": "satisfaction_rating is only meaningful when status is 'resolved' or 'closed'. A rating on an open inquiry should be ignored.",
+				"expression": "satisfaction_rating is valid ONLY WHEN status IN ('resolved', 'closed')"
+			},
+			{
+				"rule": "priority_is_system_managed",
+				"description": "priority is automatically set by automationRules. HR can override it but it should not be set by the employee.",
+				"expression": "priority write access: hr_benefits_admin only"
+			},
+			{
+				"rule": "catalog_active_filter",
+				"description": "Only BenefitsCatalog records where active=true should be returned in employee-facing searches. Inactive records exist for historical reference only.",
+				"expression": "employee queries MUST filter BenefitsCatalog WHERE active == true"
+			},
+			{
+				"rule": "total_plan_value_derived",
+				"description": "total_plan_value is always derived and never set directly.",
+				"expression": "total_plan_value == cost + employer_contribution"
+			},
+			{
+				"rule": "inquiry_date_immutable",
+				"description": "inquiry_date is set automatically at creation and must never be manually changed.",
+				"expression": "inquiry_date is write-once, set at record creation"
+			}
+		],
+		"x_roles": {
+			"description": "Role definitions governing who can read or write benefits data.",
+			"roles": {
+				"hr_benefits_admin": {
+					"description": "HR administrators who manage the benefits catalog and handle employee inquiries.",
+					"permissions": [
+						"create",
+						"read",
+						"update",
+						"delete"
+					],
+					"catalog_writable_fields": ["all"],
+                    "inquiry_writable_fields": ["status", "priority", "assigned_to", "resolution_notes"]
+				},
+				"employee": {
+					"description": "Employees who can browse the catalog and submit inquiries.",
+					"permissions": [
+						"read",
+                        "create"
+					],
+					"catalog_writable_fields": [],
+                    "inquiry_writable_fields": ["description", "benefit_category", "search_terms", "inquiry_type", "satisfaction_rating"],
+                    "catalog_read_filter": "active == true",
+                    "inquiry_read_filter": "employee == current_user"
+				}
+			}
+		}
+	}
+}
