@@ -168,6 +168,48 @@
 				"description": "The period end date must always be after the period start date.",
 				"expression": "Payroll.periodEnd > Payroll.periodStart"
 			}
-		]
+		],
+		"x_roles": {
+			"description": "Role definitions governing who can read or write payroll data. Payroll is financially sensitive — read access is strictly scoped to own records for employees and direct reports for managers.",
+			"roles": {
+				"payroll_admin": {
+					"description": "Payroll team members who process, manage, and close payroll runs. Only role permitted to create or modify any payroll record.",
+					"permissions": [
+						"create",
+						"read",
+						"update",
+						"delete"
+					],
+					"payroll_writable_fields": [
+						"all"
+					],
+					"deduction_writable_fields": [
+						"all"
+					],
+					"payroll_read_filter": "none",
+					"deduction_read_filter": "none"
+				},
+				"manager": {
+					"description": "Managers who can view payroll summaries for their direct reports only. Cannot create, edit, or delete any payroll record.",
+					"permissions": [
+						"read"
+					],
+					"payroll_writable_fields": [],
+					"deduction_writable_fields": [],
+					"payroll_read_filter": "employeeId IN direct_reports_of_current_user",
+					"deduction_read_filter": "payrollId.employeeId IN direct_reports_of_current_user"
+				},
+				"employee": {
+					"description": "Employees who can view their own payroll records and deductions only. Cannot create, edit, or delete any payroll record.",
+					"permissions": [
+						"read"
+					],
+					"payroll_writable_fields": [],
+					"deduction_writable_fields": [],
+					"payroll_read_filter": "employeeId == current_user",
+					"deduction_read_filter": "payrollId.employeeId == current_user"
+				}
+			}
+		}
 	}
 }
