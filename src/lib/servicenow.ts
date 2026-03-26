@@ -144,7 +144,7 @@ export async function createRecord(
 
 // ---- Onboarding-specific helpers ----
 
-// Table names confirmed from ServiceNow IDE sample-employees.now.ts
+// Table names matching ServiceNow scoped app (x_1926120_employee)
 export const ONBOARDING_TABLE = "x_1926120_employee_onboarding";
-export const BENEFIT_TYPES_TABLE = "x_1926120_employee_benefit_types";
-export const BENEFIT_ENROLLMENT_TABLE = "x_1926120_employee_benefit_enrollment";
+export const BENEFIT_TYPES_TABLE = "x_1926120_employee_benefits_catalog";
+export const BENEFIT_ENROLLMENT_TABLE = "x_1926120_employee_benefits_inquiry";
