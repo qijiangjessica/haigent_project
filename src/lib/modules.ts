@@ -45,9 +45,15 @@ export const AI_MODULES: AIModule[] = [
     slug: "reference",
     icon: ClipboardCheck,
     accentColor: "brand-teal",
-    enabled: false,
-    description: "Automated reference check workflows",
-    subPages: [],
+    enabled: true,
+    description: "AI-powered employee referral matching with automated skill verification and talent pool management",
+    subPages: [
+      { name: "Dashboard", path: "/reference", icon: "analytics-dashboard" },
+      { name: "Submit Referral", path: "/reference/submit", icon: "user-communication" },
+      { name: "Candidates", path: "/reference/candidates", icon: "team" },
+      { name: "Talent Pool", path: "/reference/pool", icon: "checklist" },
+      { name: "Jobs", path: "/reference/jobs", icon: "HR" },
+    ],
   },
   {
     name: "Onboarding",
