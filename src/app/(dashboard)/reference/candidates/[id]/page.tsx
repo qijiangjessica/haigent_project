@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, CheckCircle2, Clock, XCircle,
   ExternalLink, FileText, User, Building2,
-  MapPin, Calendar, Briefcase, TrendingUp,
+  MapPin, Calendar, Briefcase, TrendingUp, Sparkles, Loader2,
 } from "lucide-react";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
@@ -138,6 +138,141 @@ export default function CandidateDetailPage() {
 
   const [decision, setDecision] = useState<"PROCEED" | "ON_HOLD" | "NOT_SUITABLE" | null>(null);
   const [reasonCode, setReasonCode] = useState("");
+  const [effectiveStatus, setEffectiveStatus] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [liveAuditEvents, setLiveAuditEvents] = useState<Array<{
+    event_id: string; timestamp: string; actor: string;
+    event_type: string; before_state: string | null; after_state: string; notes: string | null;
+  }>>([]);
+  const [weights, setWeights] = useState({ skill: 50, experience: 25, location: 15, seniority: 10 });
+
+  useEffect(() => {
+    // Load existing decision
+    fetch("/api/reference/decisions")
+      .then((r) => r.json())
+      .then((data: { decisions: Array<{ candidate_id: string; decision: string; reason_code: string }> }) => {
+        const d = data.decisions.find((d) => d.candidate_id === id);
+        if (d) {
+          setDecision(d.decision as "PROCEED" | "ON_HOLD" | "NOT_SUITABLE");
+          setReasonCode(d.reason_code);
+        }
+      })
+      .catch(() => {});
+
+    // Load live audit events
+    fetch(`/api/reference/audit?entity_id=${id}`)
+      .then((r) => r.json())
+      .then((data) => setLiveAuditEvents(data.events ?? []))
+      .catch(() => {});
+
+    // Load status override
+    fetch("/api/reference/status")
+      .then((r) => r.json())
+      .then((data: { overrides: Record<string, string> }) => {
+        if (data.overrides?.[id]) setEffectiveStatus(data.overrides[id]);
+      })
+      .catch(() => {});
+
+    // Load scoring weights
+    fetch("/api/reference/scoring-config")
+      .then((r) => r.json())
+      .then((data) => setWeights(data.weights))
+      .catch(() => {});
+  }, [id]);
+
+  function handleDecision(d: "PROCEED" | "ON_HOLD" | "NOT_SUITABLE") {
+    const next = decision === d ? null : d;
+    setDecision(next);
+    if (!next) return;
+
+    const candidate = REFERENCE_CANDIDATES.find((c) => c.candidate_id === id);
+    const beforeState = effectiveStatus ?? candidate?.pool_status ?? "";
+    const afterState = next === "PROCEED" ? "matched" : next === "NOT_SUITABLE" ? "closed" : beforeState;
+
+    fetch("/api/reference/decisions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidate_id: id, decision: next, reason_code: reasonCode }),
+    }).catch(() => {});
+
+    const auditEntry = {
+      entity_id: id, entity_type: "candidate", event_type: "Decision",
+      before_state: beforeState, after_state: afterState,
+      notes: `${next}${reasonCode ? ` · ${REASON_CODES[reasonCode] ?? reasonCode}` : ""}`,
+    };
+    fetch("/api/reference/audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(auditEntry),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        setLiveAuditEvents((prev) => [...prev, {
+          event_id: data.event_id,
+          timestamp: new Date().toISOString(),
+          actor: "Recruiter",
+          event_type: "Decision",
+          before_state: beforeState,
+          after_state: afterState,
+          notes: auditEntry.notes,
+        }]);
+      })
+      .catch(() => {});
+
+    if (next === "PROCEED" || next === "NOT_SUITABLE") {
+      fetch("/api/reference/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_id: id, status: afterState }),
+      }).catch(() => {});
+      setEffectiveStatus(afterState);
+    }
+  }
+
+  async function generateSummary(
+    cand: typeof REFERENCE_CANDIDATES[0],
+    matchList: typeof MATCH_RECORDS,
+    referrerNote: string | undefined
+  ) {
+    setSummaryLoading(true);
+    const verifiedSkills = cand.skills_verified.filter((s) => s.status === "Verified").map((s) => s.skill);
+    const partialSkills = cand.skills_verified.filter((s) => s.status === "Partially Verified").map((s) => s.skill);
+    const unverifiedSkills = cand.skills_verified.filter((s) => s.status === "Unverified").map((s) => s.skill);
+    const bestMatch = matchList[0];
+    const bestJob = bestMatch ? REFERENCE_JOBS.find((j) => j.id === bestMatch.posting_id) : null;
+    const bestScore = bestMatch
+      ? Math.round((bestMatch.skill_overlap_score * weights.skill + bestMatch.experience_score * weights.experience + bestMatch.location_score * weights.location + bestMatch.seniority_score * weights.seniority) / 100)
+      : null;
+    const bestClass = bestScore !== null ? (bestScore >= 70 ? "Strong Match" : bestScore >= 50 ? "Partial Match" : "No Match") : null;
+
+    const prompt = `Write a concise 3–4 sentence recruiter assessment for this referred candidate.
+
+Candidate: ${cand.name}
+Experience: ${cand.years_experience} years at ${cand.current_employer}, based in ${cand.location}
+Availability: ${cand.availability ?? "Not specified"}
+Verified Skills: ${verifiedSkills.length > 0 ? verifiedSkills.join(", ") : "None yet"}
+Partially Verified: ${partialSkills.length > 0 ? partialSkills.join(", ") : "None"}
+Skill Gaps: ${unverifiedSkills.length > 0 ? unverifiedSkills.join(", ") : "None"}
+${bestJob && bestScore !== null ? `Best match: ${bestJob.title} — Score ${bestScore}/100 (${bestClass})` : "No match evaluations yet"}
+${referrerNote ? `Referrer's note: "${referrerNote}"` : ""}
+
+Cover: overall profile strength, key verified strengths, any notable skill gaps, and a specific recommendation for next steps. Be direct and factual.`;
+
+    try {
+      const res = await fetch("/api/reference/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
+      });
+      const data = await res.json();
+      setSummary(data.response ?? "Unable to generate summary.");
+    } catch {
+      setSummary("Failed to generate summary. Please try again.");
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
 
   const candidate = REFERENCE_CANDIDATES.find((c) => c.candidate_id === id);
   if (!candidate) {
@@ -155,10 +290,15 @@ export default function CandidateDetailPage() {
 
   const ref = REFERENCES.find((r) => r.reference_id === candidate.reference_id);
   const matches = MATCH_RECORDS.filter((m) => m.candidate_id === candidate.candidate_id)
-    .sort((a, b) => b.match_score - a.match_score);
-  const auditEvents = AUDIT_LOG.filter(
-    (e) => e.entity_id === id || e.notes?.includes(id)
-  );
+    .sort((a, b) => {
+      const ra = (a.skill_overlap_score * weights.skill + a.experience_score * weights.experience + a.location_score * weights.location + a.seniority_score * weights.seniority) / 100;
+      const rb = (b.skill_overlap_score * weights.skill + b.experience_score * weights.experience + b.location_score * weights.location + b.seniority_score * weights.seniority) / 100;
+      return rb - ra;
+    });
+  const seededAuditEvents = AUDIT_LOG.filter((e) => e.entity_id === id || e.notes?.includes(id));
+  const allAuditEvents = [...seededAuditEvents, ...liveAuditEvents]
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const displayStatus = effectiveStatus ?? candidate.pool_status;
 
   return (
     <div className="space-y-6">
@@ -180,8 +320,8 @@ export default function CandidateDetailPage() {
             <div>
               <h1 className="text-xl font-bold text-foreground">{candidate.name}</h1>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[candidate.pool_status] ?? "bg-muted text-muted-foreground"}`}>
-                  {STATUS_LABELS[candidate.pool_status] ?? candidate.pool_status}
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[displayStatus] ?? "bg-muted text-muted-foreground"}`}>
+                  {STATUS_LABELS[displayStatus] ?? displayStatus}
                 </span>
                 {candidate.availability && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-brand-cyan/10 text-brand-cyan font-medium">
@@ -233,6 +373,43 @@ export default function CandidateDetailPage() {
         </div>
       </div>
 
+      {/* AI Summary */}
+      <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-brand-teal" />
+            <h2 className="font-semibold text-sm text-foreground">AI Recruiter Summary</h2>
+          </div>
+          {!summary && (
+            <button
+              onClick={() => generateSummary(candidate, matches, ref?.referrer_note)}
+              disabled={summaryLoading}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand-teal/10 text-brand-teal hover:bg-brand-teal/20 transition-colors disabled:opacity-50"
+            >
+              {summaryLoading
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Analysing…</>
+                : <><Sparkles className="h-3.5 w-3.5" /> Generate Summary</>
+              }
+            </button>
+          )}
+        </div>
+        {summary ? (
+          <div className="mt-3">
+            <p className="text-sm text-foreground leading-relaxed">{summary}</p>
+            <button
+              onClick={() => setSummary(null)}
+              className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Regenerate
+            </button>
+          </div>
+        ) : !summaryLoading && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Click to get a concise AI assessment of this candidate's profile, strengths, gaps, and recommended next step.
+          </p>
+        )}
+      </div>
+
       {/* Score Analysis per match */}
       {matches.length > 0 && (
         <div className="space-y-4">
@@ -243,13 +420,18 @@ export default function CandidateDetailPage() {
           {matches.map((match) => {
             const job = REFERENCE_JOBS.find((j) => j.id === match.posting_id);
             const explanations = getScoreExplanations(match, candidate, job);
+            const wSkill = weights.skill / 100;
+            const wExp = weights.experience / 100;
+            const wLoc = weights.location / 100;
+            const wSen = weights.seniority / 100;
             const components = [
-              { label: "Skill Overlap", score: match.skill_overlap_score, weight: 0.50, explanation: explanations.skill_overlap },
-              { label: "Experience", score: match.experience_score, weight: 0.25, explanation: explanations.experience },
-              { label: "Location", score: match.location_score, weight: 0.15, explanation: explanations.location },
-              { label: "Seniority", score: match.seniority_score, weight: 0.10, explanation: explanations.seniority },
+              { label: "Skill Overlap", score: match.skill_overlap_score, weight: wSkill, weightPct: weights.skill, explanation: explanations.skill_overlap },
+              { label: "Experience", score: match.experience_score, weight: wExp, weightPct: weights.experience, explanation: explanations.experience },
+              { label: "Location", score: match.location_score, weight: wLoc, weightPct: weights.location, explanation: explanations.location },
+              { label: "Seniority", score: match.seniority_score, weight: wSen, weightPct: weights.seniority, explanation: explanations.seniority },
             ];
             const computed = components.reduce((sum, c) => sum + c.score * c.weight, 0);
+            const recomputedClass = computed >= 70 ? "Strong Match" : computed >= 50 ? "Partial Match" : "No Match";
 
             return (
               <div key={match.match_id} className="bg-white rounded-xl border border-border shadow-sm p-5">
@@ -263,11 +445,11 @@ export default function CandidateDetailPage() {
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      match.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
-                        : match.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                      recomputedClass === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                        : recomputedClass === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
                           : "bg-muted text-muted-foreground"
                     }`}>
-                      {match.classification}
+                      {recomputedClass}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {OUTCOME_LABELS[match.outcome] ?? match.outcome}
@@ -277,9 +459,8 @@ export default function CandidateDetailPage() {
 
                 {/* Formula banner */}
                 <div className="bg-muted rounded-lg px-4 py-2.5 mb-4 text-xs text-muted-foreground font-mono">
-                  Score = (skill_overlap × 0.50) + (experience × 0.25) + (location × 0.15) + (seniority × 0.10)
+                  Score = (skill×{weights.skill}%) + (exp×{weights.experience}%) + (loc×{weights.location}%) + (seniority×{weights.seniority}%)
                   <span className="ml-3 font-semibold text-foreground">
-                    = ({match.skill_overlap_score}×0.50) + ({match.experience_score}×0.25) + ({match.location_score}×0.15) + ({match.seniority_score}×0.10)
                     = <span className="text-brand-teal">{computed.toFixed(1)}</span>
                   </span>
                 </div>
@@ -293,7 +474,7 @@ export default function CandidateDetailPage() {
                         <ScoreBar score={c.score} />
                         <span className="text-sm font-bold text-foreground w-8 text-right flex-shrink-0">{c.score}</span>
                         <span className="text-xs text-muted-foreground w-24 flex-shrink-0 text-right">
-                          ×{c.weight.toFixed(2)} = <strong className="text-foreground">{(c.score * c.weight).toFixed(1)}</strong>
+                          ×{c.weightPct}% = <strong className="text-foreground">{(c.score * c.weight).toFixed(1)}</strong>
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground ml-28 pl-3 leading-relaxed">{c.explanation}</p>
@@ -309,11 +490,11 @@ export default function CandidateDetailPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Final Score</span>
                     <span className={`text-lg font-bold ${
-                      match.match_score >= 70 ? "text-brand-green"
-                        : match.match_score >= 50 ? "text-brand-gold"
+                      computed >= 70 ? "text-brand-green"
+                        : computed >= 50 ? "text-brand-gold"
                           : "text-red-500"
                     }`}>
-                      {match.match_score}
+                      {computed.toFixed(0)}
                     </span>
                   </div>
                 </div>
@@ -387,14 +568,14 @@ export default function CandidateDetailPage() {
       )}
 
       {/* Audit Trail */}
-      {auditEvents.length > 0 && (
+      {allAuditEvents.length > 0 && (
         <div className="bg-white rounded-xl border border-border shadow-sm p-5">
           <h2 className="font-semibold text-sm text-foreground mb-4">Audit Trail</h2>
           <div className="relative">
             {/* Vertical line */}
             <div className="absolute left-3.5 top-0 bottom-0 w-px bg-border" />
             <div className="space-y-4">
-              {auditEvents.map((event) => (
+              {allAuditEvents.map((event) => (
                 <div key={event.event_id} className="flex gap-4 relative">
                   <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 z-10 text-xs font-bold ${
                     event.event_type === "Submission" ? "bg-brand-teal/10 text-brand-teal"
@@ -436,7 +617,7 @@ export default function CandidateDetailPage() {
           {(["PROCEED", "ON_HOLD", "NOT_SUITABLE"] as const).map((d) => (
             <button
               key={d}
-              onClick={() => setDecision(decision === d ? null : d)}
+              onClick={() => handleDecision(d)}
               className={`flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg font-medium border transition-colors ${
                 decision === d
                   ? d === "PROCEED" ? "bg-brand-green/10 text-brand-green border-brand-green/30"
@@ -460,7 +641,16 @@ export default function CandidateDetailPage() {
             <label className="text-xs font-medium text-muted-foreground block mb-1.5">Reason</label>
             <select
               value={reasonCode}
-              onChange={(e) => setReasonCode(e.target.value)}
+              onChange={(e) => {
+                setReasonCode(e.target.value);
+                if (decision) {
+                  fetch("/api/reference/decisions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ candidate_id: id, decision, reason_code: e.target.value }),
+                  }).catch(() => {});
+                }
+              }}
               className="bg-muted border border-border rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-red-200"
             >
               <option value="">Select reason…</option>

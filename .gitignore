@@ -42,3 +42,6 @@ next-env.d.ts
 
 # virtual environment
 .venv/
+
+# claude
+.claude/
