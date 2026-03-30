@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Lock, Settings, ChevronLeft } from "lucide-react";
+import { Lock, Settings, ChevronLeft, ChevronDown } from "lucide-react";
 import { AI_MODULES } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +15,7 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const [referenceOpen, setReferenceOpen] = useState(false);
 
   const activeModule = AI_MODULES.find(
     (m) => m.enabled && pathname.startsWith(`/${m.slug}`)
@@ -86,6 +88,66 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 );
               }
 
+              if (mod.slug === "reference") {
+                return (
+                  <div key={mod.slug}>
+                    <Link
+                      href={`/${mod.slug}`}
+                      onClick={() => setReferenceOpen((prev) => !prev)}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                        isActive
+                          ? `bg-${mod.accentColor} text-brand-charcoal font-semibold`
+                          : "text-white/70 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          "h-4 w-4 transition-transform",
+                          isActive && "scale-110"
+                        )}
+                      />
+                      <span className="text-sm font-medium">{mod.name}</span>
+                      <ChevronDown
+                        className={cn(
+                          "ml-auto h-3 w-3 transition-transform duration-200",
+                          isActive ? "text-brand-charcoal" : "text-white/40",
+                          referenceOpen && "rotate-180"
+                        )}
+                      />
+                    </Link>
+                    {referenceOpen && (
+                      <div className="mt-1 space-y-0.5">
+                        {mod.subPages.map((page) => {
+                          const isActivePage = pathname === page.path;
+                          return (
+                            <Link
+                              key={page.path}
+                              href={page.path}
+                              className={cn(
+                                "flex items-center gap-3 pl-9 pr-3 py-2 rounded-lg transition-colors text-sm",
+                                isActivePage
+                                  ? "bg-white/10 text-white"
+                                  : "text-white/50 hover:text-white hover:bg-white/5"
+                              )}
+                            >
+                              <Image
+                                src={`/icons/${page.icon}.svg`}
+                                alt={page.name}
+                                width={14}
+                                height={14}
+                                className="opacity-60"
+                              />
+                              <span>{page.name}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               return (
                 <Link
                   key={mod.slug}
@@ -117,7 +179,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="mx-3 my-4 border-t border-white/5" />
 
         {/* Secondary Nav — Module Sub-pages */}
-        {activeModule && activeModule.subPages.length > 0 && (
+        {/* NOTE: Reference uses accordion in primary nav instead — secondary nav intentionally skipped for it */}
+        {activeModule && activeModule.subPages.length > 0 && activeModule.slug !== "reference" && (
           <div className="px-3">
             <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-2">
               {activeModule.name}

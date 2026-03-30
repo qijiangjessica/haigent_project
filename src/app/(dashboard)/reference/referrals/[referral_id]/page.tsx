@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   ArrowLeft, CheckCircle2, Circle, Loader2, TrendingUp,
   ChevronDown, ChevronUp, Database, GitBranch, AlertTriangle,
-  CheckSquare, Package,
+  CheckSquare, Package, Sparkles,
 } from "lucide-react";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
 
@@ -127,6 +127,10 @@ export default function ReferralDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
+  // AI summary state
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
   // Promotion form state
   const [showPromote, setShowPromote] = useState(false);
   const [expLevel, setExpLevel] = useState<"Junior" | "Mid" | "Senior" | "Lead">("Mid");
@@ -193,6 +197,52 @@ export default function ReferralDetailPage() {
       setPromoteError("Network error. Please try again.");
     } finally {
       setPromoting(false);
+    }
+  }
+
+  async function generateSummary() {
+    if (!referral) return;
+    setSummaryLoading(true);
+    const bestMatch = matches.reduce<LiveMatchRecord | null>(
+      (best, m) => (!best || m.match_score > best.match_score ? m : best),
+      null
+    );
+    const bestJob = bestMatch
+      ? REFERENCE_JOBS.find((j) => j.id === bestMatch.posting_id)
+      : null;
+
+    const allScores = [...matches]
+      .sort((a, b) => b.match_score - a.match_score)
+      .slice(0, 3)
+      .map((m) => {
+        const job = REFERENCE_JOBS.find((j) => j.id === m.posting_id);
+        return `${job?.title ?? m.posting_id}: ${m.match_score}/100 (${m.classification})`;
+      })
+      .join(", ");
+
+    const prompt = `Write a concise 3–4 sentence recruiter assessment for this referred candidate.
+
+Candidate: ${referral.candidate_name}
+Experience: ${referral.years_experience} years${referral.current_employer ? ` at ${referral.current_employer}` : ""}${referral.location ? `, based in ${referral.location}` : ""}
+Availability: ${referral.availability || "Not specified"}
+${bestJob && bestMatch ? `Best AI match: ${bestJob.title} — Score ${bestMatch.match_score}/100 (${bestMatch.classification})` : "No match data yet"}
+${allScores ? `All matches: ${allScores}` : ""}
+${referral.referrer_note ? `Referrer's note: "${referral.referrer_note}"` : ""}
+
+Cover: overall candidate profile strength based on the match scores, what the AI scoring suggests about fit, and a specific recommendation for next steps (e.g. proceed, request more info, or pass). Be direct and factual.`;
+
+    try {
+      const res = await fetch("/api/reference/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
+      });
+      const data = await res.json();
+      setSummary(data.response ?? "Unable to generate summary.");
+    } catch {
+      setSummary("Failed to generate summary. Please try again.");
+    } finally {
+      setSummaryLoading(false);
     }
   }
 
@@ -319,6 +369,43 @@ export default function ReferralDetailPage() {
             );
           })}
         </div>
+      </div>
+
+      {/* ── AI Recruiter Summary ── */}
+      <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-brand-teal" />
+            <h2 className="font-semibold text-sm text-foreground">AI Recruiter Summary</h2>
+          </div>
+          {!summary && (
+            <button
+              onClick={generateSummary}
+              disabled={summaryLoading}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand-teal/10 text-brand-teal hover:bg-brand-teal/20 transition-colors disabled:opacity-50"
+            >
+              {summaryLoading
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Analysing…</>
+                : <><Sparkles className="h-3.5 w-3.5" /> Generate Summary</>
+              }
+            </button>
+          )}
+        </div>
+        {summary ? (
+          <div className="mt-3">
+            <p className="text-sm text-foreground leading-relaxed">{summary}</p>
+            <button
+              onClick={() => setSummary(null)}
+              className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Regenerate
+            </button>
+          </div>
+        ) : !summaryLoading && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Click to get a concise AI assessment of this referral&apos;s profile strength, match scores, and recommended next step.
+          </p>
+        )}
       </div>
 
       {/* ── Promote to Pool form ── */}
@@ -569,9 +656,19 @@ export default function ReferralDetailPage() {
             </div>
 
             {matches.length === 0 ? (
-              <div className="text-center py-6">
-                <Loader2 className="h-5 w-5 text-muted-foreground animate-spin mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground">AI scoring not yet run or pending.</p>
+              <div className="flex items-start gap-3 bg-brand-gold/10 border border-brand-gold/30 rounded-lg px-4 py-3">
+                <AlertTriangle className="h-4 w-4 text-brand-gold flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-brand-gold">AI scoring unavailable</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    Match scores could not be computed at submission time. This is typically caused by a missing or invalid <span className="font-mono">ANTHROPIC_API_KEY</span>, or a transient API error. The referral has been saved successfully.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    To get scores, re-submit this referral from the{" "}
+                    <a href="/reference/submit" className="text-brand-teal hover:underline font-medium">Submit Referral</a>{" "}
+                    page — the duplicate warning can be acknowledged and submission will proceed.
+                  </p>
+                </div>
               </div>
             ) : (
               <>

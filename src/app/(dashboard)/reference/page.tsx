@@ -6,8 +6,8 @@ export default function ReferencePage() {
     <div className="space-y-6">
       <ReferenceDashboard />
 
-      {/* Chat Assistant */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* AI Assistant + Reference Program Links — original 2-col layout restored */}
+      <div id="ai-assistant" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="lg:col-span-1">
           <ReferenceChat />
         </div>

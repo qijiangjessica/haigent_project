@@ -828,9 +828,12 @@ export default function CandidatesPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`font-semibold ${isRejected ? "text-muted-foreground" : "text-foreground"}`}>
+                        <Link
+                          href={`/reference/referrals/${referral.referral_id}`}
+                          className={`font-semibold hover:underline ${isRejected ? "text-muted-foreground" : "text-foreground hover:text-brand-teal"}`}
+                        >
                           {referral.candidate_name}
-                        </span>
+                        </Link>
                         {isPromoted ? (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-brand-teal/10 text-brand-teal font-medium">
                             In Pool · {promotedMap[referral.referral_id]}
@@ -899,9 +902,16 @@ export default function CandidatesPage() {
                     </div>
 
                     {sortedMatches.length === 0 ? (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        AI scoring pending…
+                      <div className="flex items-start gap-2 bg-brand-gold/10 border border-brand-gold/20 rounded-lg px-3 py-2.5">
+                        <AlertTriangle className="h-3.5 w-3.5 text-brand-gold flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-medium text-brand-gold">Scoring failed at submission</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Check <span className="font-mono">ANTHROPIC_API_KEY</span> and{" "}
+                            <a href={`/reference/referrals/${referral.referral_id}`} className="text-brand-teal hover:underline">view details</a>{" "}
+                            or re-submit to retry.
+                          </p>
+                        </div>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
