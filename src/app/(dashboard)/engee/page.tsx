@@ -12,9 +12,10 @@ export default function EngeePage() {
   const [activeTab, setActiveTab]         = useState<Tab>("survey");
   const [chatSeed, setChatSeed]           = useState<string | null>(null);
 
-  function handleSurveyComplete(employeeName: string) {
+  function handleSurveyComplete(employeeName: string, department: string, selectedMentorNames: string[]) {
+    const mentorList = selectedMentorNames.join(" and ");
     setChatSeed(
-      `I've just completed my interest survey. My name is ${employeeName}. Can you find me a mentor match?`
+      `I've just completed my interest survey. My name is ${employeeName} and I'm in the ${department} department. I'd like to schedule a coffee chat with ${mentorList}. Please send them a coffee chat request via my preferred platform.`
     );
     setActiveTab("chat");
   }

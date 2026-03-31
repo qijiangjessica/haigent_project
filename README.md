@@ -1,6 +1,6 @@
 # Haigent — AI-Powered HR Platform
 
-A combined **marketing website + HR demo application** built with Next.js 15. It showcases Haigent.ai's AI agent orchestration platform for HR automation, integrating **Claude AI (Anthropic)**, **Salesforce Agentforce**, and **ServiceNow**.
+A combined **marketing website + HR demo application** built with Next.js 16. It showcases Haigent.ai's AI agent orchestration platform for HR automation, integrating **Claude AI (Anthropic)**, **Salesforce Agentforce**, **ServiceNow**, **Microsoft Teams**, and **Slack**.
 
 ---
 
@@ -11,7 +11,7 @@ The app has two distinct sections served from the same Next.js project via route
 | Section | Route Group | URL Paths | Purpose |
 |---|---|---|---|
 | **Marketing site** | `(marketing)` | `/`, `/products`, `/use-cases`, `/templates`, `/company`, `/demo`, `/terms` | Public-facing website |
-| **HR Demo app** | `(dashboard)` | `/schedule`, `/sourcing`, `/onboarding`, `/benefits`, `/payroll` | Live AI agent demos |
+| **HR Demo app** | `(dashboard)` | `/schedule`, `/sourcing`, `/onboarding`, `/benefits`, `/payroll`, `/engee` | Live AI agent demos |
 
 ---
 
@@ -24,8 +24,38 @@ The app has two distinct sections served from the same Next.js project via route
 | **Payroll** | Live | Salesforce Agentforce | Salesforce Agent API |
 | **Schedule** | Live | — | Static data |
 | **Sourcing** | Live | — | Static data |
+| **Engee** | Live | Claude AI (claude-sonnet-4-6) | ServiceNow + Teams + Slack |
 | **Reference** | Coming soon | — | — |
-| **Engee** | Coming soon | — | — |
+
+---
+
+## Engee — New Employee Engagement Agent
+
+Engee is an AI-powered agent that supports new hires through their first 90 days. It combines a rich onboarding interest survey with intelligent mentor matching and cross-platform messaging.
+
+### Features
+- **7-page interest survey** collecting: basic info, professional interests, learning goals, hobbies, work style & values, personal preferences, and 90-day goals
+- **Mentor matching** — scores mentors by department, professional interests, learning goals, and personal interests
+- **Coffee chat scheduling** — sends meeting requests via Microsoft Teams (Adaptive Cards) or Slack (Incoming Webhook)
+- **Direct meeting scheduling** — employees can ask Engee to schedule a meeting with any mentor by name from chat
+- **@mention support** — mentors are @mentioned in both Teams and Slack notifications
+
+### Survey Pages
+| Page | Content |
+|---|---|
+| 1. Basic Context | Name, role, department, city, country |
+| 2. Professional Interests | Technical areas + what to learn more |
+| 3. Hobbies & Activities | Personal hobbies with free-text "Other" option |
+| 4. Work Style & Values | Work preference, communication style, motivations, personality traits |
+| 5. Personal Preferences | Career stage, peak productivity, food preferences, weekend style, conversation topics, life situation |
+| 6. Goals | 90-day goals, mentor questions, preferred platform & meeting time |
+| 7. Mentor Matches | Top 3 mentor suggestions — selectable to schedule coffee chat |
+
+### Messaging Integrations
+| Platform | Method | Config |
+|---|---|---|
+| Microsoft Teams | Incoming Webhook (Adaptive Cards) | `TEAMS_WEBHOOK_URL` |
+| Slack | Incoming Webhook (channel-based) | `SLACK_WEBHOOK_URL` |
 
 ---
 
@@ -49,9 +79,10 @@ The app has two distinct sections served from the same Next.js project via route
 - **Framework:** Next.js 16 (App Router), React 19, TypeScript
 - **Styling:** Tailwind CSS v4, shadcn/ui
 - **Animation:** Framer Motion
-- **AI (Onboarding & Benefits):** Anthropic Claude via `@anthropic-ai/sdk`
+- **AI (Onboarding, Benefits & Engee):** Anthropic Claude via `@anthropic-ai/sdk`
 - **AI (Payroll):** Salesforce Agentforce Agent API
 - **HRIS Backend:** ServiceNow Table REST API
+- **Messaging:** Microsoft Teams Incoming Webhook, Slack Incoming Webhook
 - **Auth:** OAuth 2.0 (Salesforce), HTTP Basic Auth (ServiceNow)
 
 ---
@@ -64,6 +95,8 @@ The app has two distinct sections served from the same Next.js project via route
 - A ServiceNow PDI (Personal Developer Instance) with the custom scoped app deployed
 - An Anthropic API key with credits
 - A Salesforce org with Agentforce enabled and a Connected App configured
+- A Microsoft Teams channel with an Incoming Webhook connector
+- A Slack workspace with an Incoming Webhook configured
 
 ### 1. Install dependencies
 
@@ -110,6 +143,10 @@ SERVICENOW_PASSWORD=your_password
 
 # Anthropic Claude AI
 ANTHROPIC_API_KEY=sk-ant-...
+
+# Engee — Messaging integrations
+TEAMS_WEBHOOK_URL=https://your-org.webhook.office.com/webhookb2/...
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ```
 
 ### 4. Run the development server
@@ -142,51 +179,43 @@ src/
 │   │   ├── sourcing/
 │   │   ├── onboarding/
 │   │   ├── benefits/
-│   │   └── payroll/
+│   │   ├── payroll/
+│   │   └── engee/                    # Engee agent (survey + chat)
 │   └── api/
 │       ├── agent/                    # Salesforce Agentforce proxy
 │       ├── onboarding/
 │       │   ├── chat/                 # Claude AI agentic chat
 │       │   └── records/              # ServiceNow onboarding records
-│       └── benefits/
-│           ├── chat/                 # Claude AI agentic chat
-│           └── records/              # ServiceNow benefit records
+│       ├── benefits/
+│       │   ├── chat/                 # Claude AI agentic chat
+│       │   └── records/              # ServiceNow benefit records
+│       └── engee/
+│           ├── chat/                 # Engee AI agent (Claude + tools)
+│           ├── survey/               # Survey save/retrieve
+│           └── mentor-suggest/       # Top 3 mentor match API
 ├── components/
-│   ├── marketing/
-│   │   ├── Layout/                   # Marketing Header + Footer
-│   │   ├── Home/                     # Home page sections
-│   │   ├── Products/                 # Products page sections
-│   │   ├── UseCases/                 # Use cases page sections
-│   │   ├── Templates/                # Templates page sections
-│   │   ├── Company/                  # Company page sections
-│   │   └── Terms/                    # Terms page content
+│   ├── marketing/                    # Marketing page sections
 │   ├── onboarding/                   # Dashboard + AI chat UI
 │   ├── benefits/                     # Dashboard + AI chat UI
 │   ├── payroll/                      # Agentforce chat UI
+│   ├── engee/
+│   │   ├── survey-form.tsx           # 7-page interest survey
+│   │   └── agent-chat.tsx            # Engee chat interface
 │   ├── layout/                       # Dashboard sidebar + header
 │   ├── shared/                       # Reusable dashboard components
-│   ├── ui/                           # shadcn/ui + custom UI primitives
-│   ├── ProductIntroduction.tsx       # Product detail components
-│   ├── ProductHowItWorks.tsx
-│   ├── ProductBenefits.tsx
-│   ├── ProductIntegrations.tsx
-│   ├── ProductWorkflows.tsx
-│   ├── ProductCta.tsx
-│   ├── hero-with-mockup.tsx
-│   └── bento-grid_2.tsx
+│   └── ui/                           # shadcn/ui + custom UI primitives
 ├── data/
 │   └── products.ts                   # Product data for all 7 agents
 └── lib/
     ├── servicenow.ts                 # ServiceNow Table API client
     ├── salesforce.ts                 # Salesforce OAuth + Agentforce client
+    ├── engee-store.ts                # In-memory survey + mentor store
     └── modules.ts                    # Module registry and config
 ```
 
 ---
 
 ## ServiceNow Setup
-
-This project connects to a custom ServiceNow scoped app built in **ServiceNow Studio (IDE)**.
 
 **App scope:** `x_1926120_employee`
 
@@ -200,12 +229,10 @@ This project connects to a custom ServiceNow scoped app built in **ServiceNow St
 
 ### Required Configuration
 
-For each table, ensure the following in **System Definition > Tables**:
-
 - **Allow access to this table via web services** — must be checked
 - **Accessible from** — set to `All application scopes`
 
-The admin user must have these roles assigned:
+Admin user roles required:
 - `x_1926120_employee.hr_manager`
 - `x_1926120_employee.hr_representative`
 
@@ -213,14 +240,14 @@ The admin user must have these roles assigned:
 
 ## How the AI Agent Works
 
-The Onboarding and Benefits modules use Claude AI with an **agentic tool-use loop**:
+All Claude-powered agents use an **agentic tool-use loop**:
 
 ```
 User message
     ↓
 Claude decides which tool to call
     ↓
-Next.js API route executes the tool (ServiceNow Table API call)
+Next.js API route executes the tool (ServiceNow / Slack / Teams API call)
     ↓
 Result returned to Claude
     ↓
@@ -229,27 +256,18 @@ Claude reasons, may call additional tools
 Claude returns final answer when stop_reason === "end_turn"
 ```
 
-### Available Tools (Onboarding Agent)
+### Engee Agent Tools
 
 | Tool | Description |
 |---|---|
-| `get_employee_onboarding` | Look up an employee's onboarding record by name or ID |
-| `update_onboarding_task` | Mark onboarding tasks complete or incomplete |
-| `get_benefit_types` | Fetch all available benefit plans |
-| `get_employee_benefits` | Get a specific employee's benefit enrollments |
-| `create_it_incident` | Create an IT support ticket in ServiceNow |
-
----
-
-## Salesforce Agentforce Integration
-
-The Payroll module connects to Salesforce Agentforce via the **Agent API**:
-
-1. **Start session** — `POST /agents/{agentId}/sessions`
-2. **Send message** — `POST /sessions/{sessionId}/messages`
-3. **End session** — `DELETE /sessions/{sessionId}`
-
-Authentication uses **OAuth 2.0 Client Credentials** flow — server-to-server, no user login required.
+| `get_employee_engagement` | Get employee profile, attrition risk, and survey from ServiceNow |
+| `get_team_engagement_summary` | Team-wide engagement overview with risk counts and milestones |
+| `submit_interest_survey` | Save a new employee's interest survey |
+| `find_mentor_match` | Find a mentor by department and interests |
+| `find_mentor_by_name` | Look up a mentor's contact details by name |
+| `schedule_coffee_chat` | Send a meeting request via Teams or Slack |
+| `add_engagement_note` | Save a check-in note to an onboarding record |
+| `flag_attrition_risk` | Flag an employee as early attrition risk |
 
 ---
 
@@ -265,6 +283,9 @@ Authentication uses **OAuth 2.0 Client Credentials** flow — server-to-server, 
 | `/api/auth/salesforce` | GET | Initiate Salesforce OAuth flow |
 | `/api/auth/callback/salesforce` | GET | Salesforce OAuth callback |
 | `/api/auth/status` | GET | Check current auth status |
+| `/api/engee/chat` | POST | Engee AI agent chat |
+| `/api/engee/survey` | GET/POST | Save and retrieve interest surveys |
+| `/api/engee/mentor-suggest` | POST | Get top 3 mentor matches |
 
 ---
 
@@ -274,10 +295,10 @@ Modules are registered in [`src/lib/modules.ts`](src/lib/modules.ts). To enable 
 
 ```typescript
 {
-  name: "Onboarding",
-  slug: "onboarding",
+  name: "Engee",
+  slug: "engee",
   enabled: true,
-  description: "AI-powered onboarding assistant connected to ServiceNow",
+  description: "New employee engagement agent",
 }
 ```
 

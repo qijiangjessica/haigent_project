@@ -87,7 +87,7 @@ export const AI_MODULES: AIModule[] = [
     slug: "engee",
     icon: Users,
     accentColor: "brand-pink",
-    enabled: false,
+    enabled: true,
     description: "Employee engagement platform",
     subPages: [],
   },

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { queryTable, updateRecord, ONBOARDING_TABLE } from "@/lib/servicenow";
-import { saveSurvey, getSurveyByEmployee, findMentorsByDepartment } from "@/lib/engee-store";
+import { saveSurvey, getSurveyByEmployee, findMentorsByDepartment, findMentorByName } from "@/lib/engee-store";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -48,15 +48,15 @@ async function sendTeamsMessage(webhookUrl: string, payload: object): Promise<bo
   } catch { return false; }
 }
 
-async function sendSlackMessage(token: string, channel: string, text: string): Promise<boolean> {
+async function sendSlackWebhook(webhookUrl: string, text: string): Promise<boolean> {
   try {
-    const res = await fetch("https://slack.com/api/chat.postMessage", {
+    const res = await fetch(webhookUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ channel, text }),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `payload=${encodeURIComponent(JSON.stringify({ text }))}`,
     });
-    const data = await res.json();
-    return data.ok === true;
+    const data = await res.text();
+    return data === "ok";
   } catch { return false; }
 }
 
@@ -84,15 +84,29 @@ const tools: Anthropic.Tool[] = [
       type: "object" as const,
       properties: {
         employee_name:          { type: "string" },
+        role:                   { type: "string" },
         department:             { type: "string" },
+        city:                   { type: "string" },
+        country:                { type: "string" },
         professional_interests: { type: "array", items: { type: "string" } },
+        learning_interests:     { type: "array", items: { type: "string" } },
         personal_interests:     { type: "array", items: { type: "string" } },
+        work_style:             { type: "array", items: { type: "string" } },
+        communication_style:    { type: "array", items: { type: "string" } },
+        motivations:            { type: "array", items: { type: "string" } },
+        personality_traits:     { type: "array", items: { type: "string" } },
+        career_stage:           { type: "string" },
+        peak_productivity:      { type: "string" },
+        food_preferences:       { type: "array", items: { type: "string" } },
+        weekend_style:          { type: "array", items: { type: "string" } },
+        conversation_topics:    { type: "array", items: { type: "string" } },
+        life_situation:         { type: "array", items: { type: "string" } },
         goals_90_days:          { type: "string" },
         questions_for_mentor:   { type: "string" },
         preferred_platform:     { type: "string", enum: ["teams", "slack"] },
         preferred_meeting_time: { type: "string", enum: ["morning", "afternoon", "flexible"] },
       },
-      required: ["employee_name", "department", "professional_interests", "personal_interests", "goals_90_days", "questions_for_mentor", "preferred_platform", "preferred_meeting_time"],
+      required: ["employee_name", "role", "department", "city", "country", "professional_interests", "learning_interests", "personal_interests", "goals_90_days", "questions_for_mentor", "preferred_platform", "preferred_meeting_time"],
     },
   },
   {
@@ -108,6 +122,17 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: "find_mentor_by_name",
+    description: "Look up a mentor's contact details (Slack ID, Teams ID, email, bio) by their name. Use this before scheduling a meeting when the employee mentions a specific mentor by name.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        mentor_name: { type: "string", description: "Full or partial name of the mentor" },
+      },
+      required: ["mentor_name"],
+    },
+  },
+  {
     name: "schedule_coffee_chat",
     description: "Send a coffee chat / mentor meeting request via Microsoft Teams or Slack on behalf of a new employee.",
     input_schema: {
@@ -115,11 +140,12 @@ const tools: Anthropic.Tool[] = [
       properties: {
         platform:                { type: "string", enum: ["teams", "slack"] },
         mentor_contact:          { type: "string", description: "Slack user/channel ID or Teams channel for the mentor" },
+        mentor_name:             { type: "string", description: "Full name of the mentor being contacted" },
         employee_name:           { type: "string" },
         employee_interests:      { type: "string", description: "Summary of employee interests" },
         meeting_time_preference: { type: "string", enum: ["morning", "afternoon", "flexible"] },
       },
-      required: ["platform", "mentor_contact", "employee_name", "employee_interests"],
+      required: ["platform", "mentor_contact", "mentor_name", "employee_name", "employee_interests"],
     },
   },
   {
@@ -203,9 +229,23 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
     if (name === "submit_interest_survey") {
       const record = saveSurvey({
         employee_name:          String(input.employee_name),
+        role:                   String(input.role ?? ""),
         department:             String(input.department),
+        city:                   String(input.city ?? ""),
+        country:                String(input.country ?? ""),
         professional_interests: input.professional_interests as string[],
+        learning_interests:     (input.learning_interests as string[]) ?? [],
         personal_interests:     input.personal_interests as string[],
+        work_style:             (input.work_style as string[]) ?? [],
+        communication_style:    (input.communication_style as string[]) ?? [],
+        motivations:            (input.motivations as string[]) ?? [],
+        personality_traits:     (input.personality_traits as string[]) ?? [],
+        career_stage:           String(input.career_stage ?? ""),
+        peak_productivity:      String(input.peak_productivity ?? ""),
+        food_preferences:       (input.food_preferences as string[]) ?? [],
+        weekend_style:          (input.weekend_style as string[]) ?? [],
+        conversation_topics:    (input.conversation_topics as string[]) ?? [],
+        life_situation:         (input.life_situation as string[]) ?? [],
         goals_90_days:          String(input.goals_90_days),
         questions_for_mentor:   String(input.questions_for_mentor),
         preferred_platform:     input.preferred_platform as "teams" | "slack",
@@ -232,10 +272,24 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }, null, 2);
     }
 
+    if (name === "find_mentor_by_name") {
+      const mentor = findMentorByName(String(input.mentor_name));
+      if (!mentor) return `No mentor found matching "${input.mentor_name}". Available mentors: ${["Alex Chen", "Jordan Lee", "Sam Rivera", "Taylor Kim", "Morgan Patel", "Casey Nguyen", "Riley Thompson", "Zilai Feng", "Gabriel Brock", "Ahsaan Rizvi"].join(", ")}.`;
+      return JSON.stringify({
+        name: mentor.name,
+        title: mentor.title,
+        department: mentor.department,
+        email: mentor.email,
+        slack_id: mentor.slack_id,
+        teams_id: mentor.teams_id,
+        bio: mentor.bio,
+      }, null, 2);
+    }
+
     if (name === "schedule_coffee_chat") {
-      const { platform, mentor_contact, employee_name, employee_interests, meeting_time_preference } = input as Record<string, string>;
-      const teamsWebhook = process.env.TEAMS_WEBHOOK_URL;
-      const slackToken   = process.env.SLACK_BOT_TOKEN;
+      const { platform, mentor_contact, mentor_name, employee_name, employee_interests, meeting_time_preference } = input as Record<string, string>;
+      const teamsWebhook  = process.env.TEAMS_WEBHOOK_URL;
+      const slackWebhook  = process.env.SLACK_WEBHOOK_URL;
 
       if (platform === "teams") {
         if (!teamsWebhook) return "Teams webhook URL not configured. Add TEAMS_WEBHOOK_URL to .env.local.";
@@ -246,10 +300,19 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
             content: {
               "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
               type: "AdaptiveCard", version: "1.4",
+              msteams: {
+                entities: [{
+                  type: "mention",
+                  text: `<at>${mentor_name}</at>`,
+                  mentioned: { id: mentor_contact, name: mentor_name },
+                }],
+              },
               body: [
                 { type: "TextBlock", text: "☕ Coffee Chat Request", weight: "Bolder", size: "Large", color: "Accent" },
-                { type: "TextBlock", text: `**${employee_name}** just joined the team and is looking for a mentor!`, wrap: true },
+                { type: "TextBlock", text: `Hi <at>${mentor_name}</at>! **${employee_name}** just joined the team and would love to connect with you.`, wrap: true },
                 { type: "FactSet", facts: [
+                  { title: "New hire", value: employee_name },
+                  { title: "Mentor", value: mentor_name },
                   { title: "Interests", value: employee_interests },
                   { title: "Preferred time", value: meeting_time_preference || "Flexible" },
                   { title: "Requested by", value: "Haigent Engee" },
@@ -266,11 +329,11 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
 
       if (platform === "slack") {
-        if (!slackToken) return "Slack bot token not configured. Add SLACK_BOT_TOKEN to .env.local.";
-        const ok = await sendSlackMessage(slackToken, mentor_contact,
-          `*Coffee Chat Request — ${employee_name}*\n\nHi <@${mentor_contact}>! ${employee_name} just joined and would love to connect.\n*Interests:* ${employee_interests}\n*Preferred time:* ${meeting_time_preference || "Flexible"}`
+        if (!slackWebhook) return "Slack webhook URL not configured. Add SLACK_WEBHOOK_URL to .env.local.";
+        const ok = await sendSlackWebhook(slackWebhook,
+          `☕ *Coffee Chat Request*\n\nHi <@${mentor_contact}>! *${employee_name}* just joined the team and would love to connect with you.\n\n*New hire:* ${employee_name}\n*Mentor:* ${mentor_name}\n*Interests:* ${employee_interests}\n*Preferred time:* ${meeting_time_preference || "Flexible"}\n\nCould you find a 30-minute slot to connect?`
         );
-        return ok ? `Slack message sent to ${mentor_contact}!` : "Failed to send Slack message. Check SLACK_BOT_TOKEN.";
+        return ok ? `Slack message posted to channel! ${mentor_name} has been notified.` : "Failed to send Slack message. Check SLACK_WEBHOOK_URL.";
       }
 
       return "Unknown platform. Specify 'teams' or 'slack'.";
@@ -306,10 +369,12 @@ const SYSTEM_PROMPT = `You are Engee, an AI agent specialized in engagement with
 Core capabilities:
 1. INTEREST SURVEY — Conversationally guide new employees through sharing interests and goals, then save with submit_interest_survey.
 2. MENTOR MATCHING — Use find_mentor_match to suggest the right mentor based on department and interests.
-3. COFFEE CHAT SCHEDULING — Send meeting requests via Teams or Slack using schedule_coffee_chat.
-4. ENGAGEMENT MONITORING — Track milestone check-ins, attrition risk, and team health.
+3. DIRECT MEETING SCHEDULING — When an employee asks to schedule a meeting with a specific mentor by name, use find_mentor_by_name to get their contact info, then call schedule_coffee_chat. Do not ask the employee for the mentor's Slack/Teams ID — look it up yourself.
+4. COFFEE CHAT SCHEDULING — Send meeting requests via Teams or Slack using schedule_coffee_chat.
+5. ENGAGEMENT MONITORING — Track milestone check-ins, attrition risk, and team health.
 
 When an employee has just completed the interest survey form, immediately use find_mentor_match to suggest a match.
+When an employee mentions a mentor by name and wants to schedule a meeting, use find_mentor_by_name first, then schedule_coffee_chat — never ask the employee for contact IDs.
 Always be warm, encouraging, and people-first. New employees can be nervous — help them feel welcome.
 For HR managers asking for team overviews, be concise and action-oriented.`;
 
