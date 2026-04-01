@@ -151,7 +151,7 @@ export const MENTORS: MentorRecord[] = [
     department: "Data & Analytics",
     email: "zilai.feng@procogia.com",
     slack_id: "U_ZILAI",
-    teams_id: "zilai.feng@procogia.com",
+    teams_id: "Zilai@procogia.com",
     bio: "Focused on machine learning and AI-driven insights. Happy to mentor on data science workflows, career growth, and navigating the analytics space.",
   },
   {

@@ -293,6 +293,12 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
       if (platform === "teams") {
         if (!teamsWebhook) return "Teams webhook URL not configured. Add TEAMS_WEBHOOK_URL to .env.local.";
+
+        // Always resolve the correct Teams UPN (email) from the mentor record
+        // so @mention works regardless of what mentor_contact the agent passed
+        const mentorRecord = findMentorByName(mentor_name);
+        const teamsUserId = mentorRecord?.teams_id ?? mentor_contact;
+
         const ok = await sendTeamsMessage(teamsWebhook, {
           type: "message",
           attachments: [{
@@ -304,7 +310,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
                 entities: [{
                   type: "mention",
                   text: `<at>${mentor_name}</at>`,
-                  mentioned: { id: mentor_contact, name: mentor_name },
+                  mentioned: { id: teamsUserId, name: mentor_name },
                 }],
               },
               body: [
