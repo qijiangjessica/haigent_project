@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
 import { MATCH_RECORDS } from "@/data/reference/matches";
-import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle, Square, CheckSquare, Minus } from "lucide-react";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { AUDIT_LOG } from "@/data/reference/audit-log";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
@@ -42,6 +42,7 @@ interface LiveMatchRecord {
   seniority_score: number;
   classification: "Strong Match" | "Partial Match" | "No Match";
   evaluated_date: string;
+  scoring_method?: "ai" | "static";
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -122,6 +123,13 @@ export default function CandidatesPage() {
   const [submittedReferrals, setSubmittedReferrals] = useState<SubmittedReferral[]>([]);
   const [liveMatches, setLiveMatches] = useState<LiveMatchRecord[]>([]);
   const [expandedLiveScores, setExpandedLiveScores] = useState<Set<string>>(new Set());
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDecision, setBulkDecision] = useState<DecisionValue>(null);
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const [bulkResult, setBulkResult] = useState<"idle" | "success" | "error">("idle");
 
   // Referral action state
   const [promotedMap, setPromotedMap] = useState<Record<string, string>>({}); // referral_id → pool_id
@@ -272,6 +280,116 @@ export default function CandidatesPage() {
       e.entity_type, e.entity_id, e.before_state ?? "", e.after_state, e.notes ?? "",
     ]);
     downloadCsv("audit-log.csv", toCsv(headers, rows));
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((c) => c.candidate_id)));
+    }
+  }
+
+  function exportSelectedCsv() {
+    const headers = ["ID", "Name", "Email", "Phone", "Employer", "Years Exp", "Location", "Availability", "Score", "Status", "Skills Claimed", "Resume"];
+    const rows = filtered
+      .filter((c) => selectedIds.has(c.candidate_id))
+      .map((c) => [
+        c.candidate_id, c.name, c.email, c.phone, c.current_employer,
+        c.years_experience, c.location, c.availability ?? "",
+        c.candidate_score, c.pool_status,
+        c.skills_claimed.join("; "), c.resume_uploaded ? "Yes" : "No",
+      ]);
+    downloadCsv("selected-candidates.csv", toCsv(headers, rows));
+  }
+
+  async function applyBulkDecision() {
+    if (!bulkDecision || selectedIds.size === 0) return;
+    setBulkApplying(true);
+    setBulkResult("idle");
+    try {
+      await Promise.all(
+        [...selectedIds].map((id) =>
+          fetch("/api/reference/decisions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ candidate_id: id, decision: bulkDecision, reason_code: "" }),
+          })
+        )
+      );
+      // Apply status transitions
+      const afterState =
+        bulkDecision === "PROCEED" ? "matched"
+          : bulkDecision === "NOT_SUITABLE" ? "closed"
+            : null;
+      if (afterState) {
+        await Promise.all(
+          [...selectedIds].map((id) =>
+            fetch("/api/reference/status", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ candidate_id: id, status: afterState }),
+            })
+          )
+        );
+        setStatusOverridesMap((prev) => {
+          const next = { ...prev };
+          [...selectedIds].forEach((id) => { next[id] = afterState; });
+          return next;
+        });
+      }
+      setDecisions((prev) => {
+        const next = { ...prev };
+        [...selectedIds].forEach((id) => {
+          next[id] = { decision: bulkDecision, reasonCode: "" };
+        });
+        return next;
+      });
+      setBulkResult("success");
+      setSelectedIds(new Set());
+      setTimeout(() => setBulkResult("idle"), 3000);
+    } catch {
+      setBulkResult("error");
+    } finally {
+      setBulkApplying(false);
+    }
+  }
+
+  async function applyBulkStatus() {
+    if (!bulkStatus || selectedIds.size === 0) return;
+    setBulkApplying(true);
+    setBulkResult("idle");
+    try {
+      await Promise.all(
+        [...selectedIds].map((id) =>
+          fetch("/api/reference/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ candidate_id: id, status: bulkStatus }),
+          })
+        )
+      );
+      setStatusOverridesMap((prev) => {
+        const next = { ...prev };
+        [...selectedIds].forEach((id) => { next[id] = bulkStatus; });
+        return next;
+      });
+      setBulkResult("success");
+      setSelectedIds(new Set());
+      setTimeout(() => setBulkResult("idle"), 3000);
+    } catch {
+      setBulkResult("error");
+    } finally {
+      setBulkApplying(false);
+    }
   }
 
   const bestMatchByCandidate = useMemo(() => {
@@ -530,10 +648,113 @@ export default function CandidatesPage() {
         </div>
       )}
 
+      {/* Bulk action toolbar — visible when rows are selected */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 bg-brand-teal/5 border border-brand-teal/20 rounded-xl px-4 py-3">
+          <span className="text-sm font-medium text-brand-teal">
+            {selectedIds.size} selected
+          </span>
+          <div className="h-4 w-px bg-border" />
+
+          {/* Bulk status update */}
+          <div className="flex items-center gap-2">
+            <select
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+              className="border border-border rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-brand-teal/30 bg-white"
+            >
+              <option value="">Set status…</option>
+              {Object.entries(STATUS_LABELS).map(([val, label]) => (
+                <option key={val} value={val}>{label}</option>
+              ))}
+            </select>
+            <button
+              onClick={applyBulkStatus}
+              disabled={!bulkStatus || bulkApplying}
+              className="text-xs px-3 py-1.5 rounded-lg bg-brand-teal text-white hover:bg-brand-teal/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Apply
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-border" />
+
+          {/* Bulk decision */}
+          <div className="flex items-center gap-2">
+            <select
+              value={bulkDecision ?? ""}
+              onChange={(e) => setBulkDecision(e.target.value as DecisionValue || null)}
+              className="border border-border rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-brand-teal/30 bg-white"
+            >
+              <option value="">Set decision…</option>
+              <option value="PROCEED">Proceed</option>
+              <option value="ON_HOLD">On Hold</option>
+              <option value="NOT_SUITABLE">Not Suitable</option>
+            </select>
+            <button
+              onClick={applyBulkDecision}
+              disabled={!bulkDecision || bulkApplying}
+              className="text-xs px-3 py-1.5 rounded-lg bg-brand-charcoal text-white hover:bg-brand-charcoal/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {bulkApplying ? <Loader2 className="w-3 h-3 animate-spin" /> : "Record"}
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-border" />
+
+          {/* Bulk CSV export */}
+          <button
+            onClick={exportSelectedCsv}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export Selected
+          </button>
+
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Clear selection
+          </button>
+
+          {bulkResult === "success" && (
+            <span className="text-xs text-brand-green flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Applied
+            </span>
+          )}
+          {bulkResult === "error" && (
+            <span className="text-xs text-destructive flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5" /> Failed
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Result count */}
       <p className="text-xs text-muted-foreground -mt-2">
         Showing {filtered.length} seeded · {submittedReferrals.length} submitted
+        {selectedIds.size > 0 && <span className="text-brand-teal ml-2">· {selectedIds.size} selected</span>}
       </p>
+
+      {/* Select-all toggle — only shown when there are visible candidates */}
+      {filtered.length > 0 && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleSelectAll}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {selectedIds.size === filtered.length && filtered.length > 0 ? (
+              <CheckSquare className="h-4 w-4 text-brand-teal" />
+            ) : selectedIds.size > 0 ? (
+              <Minus className="h-4 w-4 text-brand-teal" />
+            ) : (
+              <Square className="h-4 w-4" />
+            )}
+            {selectedIds.size === filtered.length && filtered.length > 0 ? "Deselect all" : "Select all"}
+          </button>
+        </div>
+      )}
 
       <div className="grid gap-4">
         {filtered.map((candidate) => {
@@ -545,6 +766,7 @@ export default function CandidatesPage() {
           const effectiveStatus = statusOverridesMap[candidate.candidate_id] ?? candidate.pool_status;
           const bestRecomputed = bestMatch ? computeScore(bestMatch, weights) : candidate.candidate_score;
           const bestRecomputedClass = bestMatch ? classifyScore(bestRecomputed) : null;
+          const isSelected = selectedIds.has(candidate.candidate_id);
 
           return (
             <div
@@ -553,7 +775,18 @@ export default function CandidatesPage() {
             >
               {/* Header row */}
               <div className="flex items-start justify-between gap-4">
-                <div>
+                <div className="flex items-start gap-3">
+                  <button
+                    onClick={() => toggleSelect(candidate.candidate_id)}
+                    className="mt-0.5 flex-shrink-0 text-muted-foreground hover:text-brand-teal transition-colors"
+                  >
+                    {isSelected ? (
+                      <CheckSquare className="h-4 w-4 text-brand-teal" />
+                    ) : (
+                      <Square className="h-4 w-4" />
+                    )}
+                  </button>
+                  <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Link
                       href={`/reference/candidates/${candidate.candidate_id}`}
@@ -576,6 +809,7 @@ export default function CandidatesPage() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {candidate.email} · {candidate.phone}
                   </p>
+                  </div>
                 </div>
 
                 <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
@@ -883,19 +1117,23 @@ export default function CandidatesPage() {
                     )}
                   </div>
 
-                  {/* ── AI Match Scores — always visible ── */}
+                  {/* ── Job Matches ── */}
                   <div className="mt-3 pt-3 border-t border-border">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-1.5">
-                        <TrendingUp className="h-3.5 w-3.5 text-brand-teal" />
-                        <p className="text-xs font-semibold text-foreground">AI Match Scores</p>
+                        <p className="text-xs font-medium text-muted-foreground">Job Matches</p>
+                        {sortedMatches.length > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                            {sortedMatches[0]?.scoring_method === "ai" ? "Claude AI" : "Rule-based"}
+                          </span>
+                        )}
                       </div>
                       {sortedMatches.length > 0 && (
                         <button
                           onClick={() => toggleLiveScore(referral.referral_id)}
                           className="flex items-center gap-1 text-xs text-brand-teal hover:underline"
                         >
-                          Component detail
+                          Score breakdown
                           {liveScoreExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         </button>
                       )}
@@ -905,83 +1143,65 @@ export default function CandidatesPage() {
                       <div className="flex items-start gap-2 bg-brand-gold/10 border border-brand-gold/20 rounded-lg px-3 py-2.5">
                         <AlertTriangle className="h-3.5 w-3.5 text-brand-gold flex-shrink-0 mt-0.5" />
                         <div>
-                          <p className="text-xs font-medium text-brand-gold">Scoring failed at submission</p>
+                          <p className="text-xs font-medium text-brand-gold">No scores yet</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            Check <span className="font-mono">ANTHROPIC_API_KEY</span> and{" "}
-                            <a href={`/reference/referrals/${referral.referral_id}`} className="text-brand-teal hover:underline">view details</a>{" "}
-                            or re-submit to retry.
+                            Scores will appear here once computed.{" "}
+                            <a href={`/reference/referrals/${referral.referral_id}`} className="text-brand-teal hover:underline">View referral details</a>
                           </p>
                         </div>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {sortedMatches.map((m) => {
                           const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
                           return (
-                            <div key={m.match_id} className={`rounded-lg border px-3 py-2.5 ${
-                              m.classification === "Strong Match"
-                                ? "border-brand-green/20 bg-brand-green/5"
-                                : m.classification === "Partial Match"
-                                  ? "border-brand-gold/20 bg-brand-gold/5"
-                                  : "border-border bg-muted/40"
-                            }`}>
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-foreground truncate">{jobTitle}</p>
-                                <div className="flex items-center gap-1.5 flex-shrink-0">
-                                  <span className="text-lg font-bold text-foreground">{m.match_score}</span>
-                                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                                    m.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
-                                      : m.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
-                                        : "bg-muted text-muted-foreground"
-                                  }`}>{m.classification}</span>
-                                </div>
-                              </div>
-                              {/* Component score mini-bar */}
-                              <div className="mt-2 grid grid-cols-4 gap-1 text-center">
-                                {[
-                                  { label: "Skill", value: m.skill_overlap_score },
-                                  { label: "Exp", value: m.experience_score },
-                                  { label: "Loc", value: m.location_score },
-                                  { label: "Sen", value: m.seniority_score },
-                                ].map((c) => (
-                                  <div key={c.label}>
-                                    <p className="text-[10px] text-muted-foreground">{c.label}</p>
-                                    <p className={`text-xs font-bold ${c.value >= 70 ? "text-brand-green" : c.value >= 50 ? "text-brand-gold" : "text-muted-foreground"}`}>
-                                      {c.value}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
+                            <div key={m.match_id} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
+                              <span className="text-muted-foreground">{jobTitle}</span>
+                              <span className="font-semibold text-foreground">{m.match_score}</span>
+                              <span className={
+                                m.classification === "Strong Match" ? "text-brand-green"
+                                  : m.classification === "Partial Match" ? "text-brand-gold"
+                                    : "text-muted-foreground"
+                              }>· {m.classification}</span>
                             </div>
                           );
                         })}
                       </div>
                     )}
 
-                    {/* Full component breakdown */}
+                    {/* Score breakdown panel */}
                     {liveScoreExpanded && sortedMatches.length > 0 && (
                       <div className="mt-3 space-y-2">
-                        {sortedMatches.map((m) => (
-                          <div key={m.match_id} className="bg-muted rounded-lg p-3">
-                            <p className="text-xs font-semibold text-foreground mb-2">
-                              {REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id}
-                              <span className="ml-2 font-normal text-muted-foreground">— detailed breakdown</span>
-                            </p>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                              {[
-                                { label: "Skill Overlap", value: m.skill_overlap_score },
-                                { label: "Experience",    value: m.experience_score },
-                                { label: "Location",      value: m.location_score },
-                                { label: "Seniority",     value: m.seniority_score },
-                              ].map((item) => (
-                                <div key={item.label} className="text-center bg-white rounded-lg p-2">
-                                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                                  <p className="text-xl font-bold text-foreground">{item.value}</p>
-                                </div>
-                              ))}
+                        {sortedMatches.map((m) => {
+                          const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
+                          return (
+                            <div key={m.match_id} className="bg-muted rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs font-semibold text-foreground">{jobTitle}</p>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  m.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                                    : m.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                                      : "bg-muted text-muted-foreground"
+                                }`}>
+                                  {m.match_score} · {m.classification}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {[
+                                  { label: "Skill Overlap", value: m.skill_overlap_score },
+                                  { label: "Experience",    value: m.experience_score },
+                                  { label: "Location",      value: m.location_score },
+                                  { label: "Seniority",     value: m.seniority_score },
+                                ].map((item) => (
+                                  <div key={item.label} className="text-center">
+                                    <p className="text-xs text-muted-foreground">{item.label}</p>
+                                    <p className="text-lg font-bold text-foreground">{item.value}</p>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

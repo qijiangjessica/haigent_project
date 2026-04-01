@@ -1,0 +1,58 @@
+[
+  {
+    "match_id": "STATIC-REF-20260401-JHML-0",
+    "referral_id": "REF-20260401-JHML",
+    "candidate_name": "Alex Nue",
+    "posting_id": "ROL-PeY7KEhPOZ",
+    "match_score": 52,
+    "skill_overlap_score": 50,
+    "experience_score": 60,
+    "location_score": 30,
+    "seniority_score": 70,
+    "classification": "Partial Match",
+    "evaluated_date": "2026-04-01",
+    "scoring_method": "static"
+  },
+  {
+    "match_id": "STATIC-REF-20260401-JHML-1",
+    "referral_id": "REF-20260401-JHML",
+    "candidate_name": "Alex Nue",
+    "posting_id": "ROL-N_TspQJnOE",
+    "match_score": 34,
+    "skill_overlap_score": 0,
+    "experience_score": 90,
+    "location_score": 30,
+    "seniority_score": 70,
+    "classification": "No Match",
+    "evaluated_date": "2026-04-01",
+    "scoring_method": "static"
+  },
+  {
+    "match_id": "STATIC-REF-20260401-MDPE-0",
+    "referral_id": "REF-20260401-MDPE",
+    "candidate_name": "Alex Nue",
+    "posting_id": "ROL-PeY7KEhPOZ",
+    "match_score": 39,
+    "skill_overlap_score": 50,
+    "experience_score": 15,
+    "location_score": 30,
+    "seniority_score": 55,
+    "classification": "No Match",
+    "evaluated_date": "2026-04-01",
+    "scoring_method": "static"
+  },
+  {
+    "match_id": "STATIC-REF-20260401-MDPE-1",
+    "referral_id": "REF-20260401-MDPE",
+    "candidate_name": "Alex Nue",
+    "posting_id": "ROL-N_TspQJnOE",
+    "match_score": 21,
+    "skill_overlap_score": 0,
+    "experience_score": 45,
+    "location_score": 30,
+    "seniority_score": 55,
+    "classification": "No Match",
+    "evaluated_date": "2026-04-01",
+    "scoring_method": "static"
+  }
+]

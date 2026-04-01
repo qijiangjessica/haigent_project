@@ -1,0 +1,50 @@
+[
+  {
+    "referral_id": "REF-20260401-JHML",
+    "submitted_at": "2026-04-01T20:56:38.435Z",
+    "referrer_name": "siva",
+    "referrer_emp_id": "01",
+    "candidate_name": "Alex Nue",
+    "candidate_email": "alex@gmail.com",
+    "candidate_phone": "5099096666",
+    "current_employer": "TD",
+    "years_experience": 5,
+    "location": "Toronto, Canada",
+    "availability": "1 month",
+    "linkedin_url": "",
+    "target_job_id": "pool",
+    "referrer_note": "NA",
+    "resume_filename": null,
+    "extra_filenames": [],
+    "is_duplicate": false,
+    "duplicate_candidate_id": null,
+    "skills_claimed": [
+      "Python",
+      "Sql"
+    ]
+  },
+  {
+    "referral_id": "REF-20260401-MDPE",
+    "submitted_at": "2026-04-01T21:10:16.452Z",
+    "referrer_name": "siva",
+    "referrer_emp_id": "1",
+    "candidate_name": "Alex Nue",
+    "candidate_email": "alex@gmail.com",
+    "candidate_phone": "5099096666",
+    "current_employer": "TD",
+    "years_experience": 2,
+    "location": "Toronto, Canada",
+    "availability": "2 weeks",
+    "linkedin_url": "",
+    "target_job_id": "pool",
+    "referrer_note": "NA",
+    "resume_filename": null,
+    "extra_filenames": [],
+    "is_duplicate": true,
+    "duplicate_candidate_id": null,
+    "skills_claimed": [
+      "Python",
+      "Sql"
+    ]
+  }
+]

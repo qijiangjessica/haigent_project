@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setStatusOverride, getAllStatusOverrides } from "@/lib/reference-store";
+import { getAllStatusOverrides } from "@/lib/reference-store";
+import { setStatusOverrideAndPersist } from "@/lib/reference-json-persistence";
 
 export async function GET() {
   return NextResponse.json({ overrides: getAllStatusOverrides() });
@@ -16,7 +17,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    setStatusOverride(body.candidate_id, body.status);
+    // Persist override to store + disk
+    setStatusOverrideAndPersist(body.candidate_id, body.status);
 
     return NextResponse.json({ success: true });
   } catch (error) {

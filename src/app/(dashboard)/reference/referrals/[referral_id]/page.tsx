@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   ArrowLeft, CheckCircle2, Circle, Loader2, TrendingUp,
   ChevronDown, ChevronUp, Database, GitBranch, AlertTriangle,
-  CheckSquare, Package, Sparkles,
+  CheckSquare, Package, Sparkles, RefreshCw,
 } from "lucide-react";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
 
@@ -45,6 +45,7 @@ interface LiveMatchRecord {
   seniority_score: number;
   classification: "Strong Match" | "Partial Match" | "No Match";
   evaluated_date: string;
+  scoring_method?: "ai" | "static";
 }
 
 interface LivePoolEntry {
@@ -140,6 +141,10 @@ export default function ReferralDetailPage() {
   const [promoting, setPromoting] = useState(false);
   const [promoteError, setPromoteError] = useState<string | null>(null);
 
+  // Re-score state
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreStatus, setRescoreStatus] = useState<"idle" | "success" | "error">("idle");
+
   // Score breakdown toggle per match
   const [expandedMatches, setExpandedMatches] = useState<Set<string>>(new Set());
 
@@ -197,6 +202,32 @@ export default function ReferralDetailPage() {
       setPromoteError("Network error. Please try again.");
     } finally {
       setPromoting(false);
+    }
+  }
+
+  async function handleRescore() {
+    if (!referral || rescoring) return;
+    setRescoring(true);
+    setRescoreStatus("idle");
+    try {
+      const res = await fetch("/api/reference/rescore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ referral_id: referral.referral_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRescoreStatus("error");
+      } else {
+        // Append new match records to the existing list
+        setMatches((prev) => [...prev, ...(data.match_results ?? [])]);
+        setRescoreStatus("success");
+        setTimeout(() => setRescoreStatus("idle"), 3000);
+      }
+    } catch {
+      setRescoreStatus("error");
+    } finally {
+      setRescoring(false);
     }
   }
 
@@ -331,15 +362,36 @@ Cover: overall candidate profile strength based on the match scores, what the AI
             )}
           </div>
         </div>
-        {!isInPool && (
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
-            onClick={() => setShowPromote(!showPromote)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-teal text-white text-sm font-medium hover:bg-brand-teal/90 transition-colors flex-shrink-0"
+            onClick={handleRescore}
+            disabled={rescoring}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:border-brand-teal/40 hover:bg-brand-teal/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Re-run match scoring against current open jobs and scoring weights"
           >
-            <Package className="h-4 w-4" />
-            Promote to Pool
+            <RefreshCw className={`h-4 w-4 ${rescoring ? "animate-spin" : ""}`} />
+            {rescoring ? "Re-scoring…" : "Re-score"}
           </button>
-        )}
+          {rescoreStatus === "success" && (
+            <span className="text-xs text-brand-green flex items-center gap-1">
+              <CheckCircle2 className="h-3.5 w-3.5" /> New scores added
+            </span>
+          )}
+          {rescoreStatus === "error" && (
+            <span className="text-xs text-destructive flex items-center gap-1">
+              <AlertTriangle className="h-3.5 w-3.5" /> Re-score failed
+            </span>
+          )}
+          {!isInPool && (
+            <button
+              onClick={() => setShowPromote(!showPromote)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-teal text-white text-sm font-medium hover:bg-brand-teal/90 transition-colors"
+            >
+              <Package className="h-4 w-4" />
+              Promote to Pool
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Pipeline stage tracker ── */}
@@ -720,6 +772,13 @@ Cover: overall candidate profile strength based on the match scores, what the AI
                                     : "bg-muted text-muted-foreground"
                               }`}>
                                 {m.classification}
+                              </span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                m.scoring_method === "ai"
+                                  ? "bg-brand-cyan/10 text-brand-cyan"
+                                  : "bg-muted text-muted-foreground"
+                              }`}>
+                                {m.scoring_method === "ai" ? "⚡ AI" : "≈ Rule"}
                               </span>
                               <button
                                 onClick={() => toggleMatch(m.match_id)}

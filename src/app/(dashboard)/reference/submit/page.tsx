@@ -4,18 +4,7 @@ import { useState, useRef, useMemo } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { OPEN_JOBS } from "@/data/reference/jobs";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
-import { CheckCircle2, Upload, X, FileText, AlertTriangle, TrendingUp } from "lucide-react";
-import { REFERENCE_JOBS } from "@/data/reference/jobs";
-
-interface MatchResult {
-  posting_id: string;
-  match_score: number;
-  skill_overlap_score: number;
-  experience_score: number;
-  location_score: number;
-  seniority_score: number;
-  classification: "Strong Match" | "Partial Match" | "No Match";
-}
+import { CheckCircle2, Upload, X, FileText, AlertTriangle } from "lucide-react";
 
 interface FormState {
   referrerName: string;
@@ -59,7 +48,6 @@ export default function SubmitReferralPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [matchResults, setMatchResults] = useState<MatchResult[]>([]);
   const resumeRef = useRef<HTMLInputElement>(null);
   const extraRef = useRef<HTMLInputElement>(null);
 
@@ -118,7 +106,6 @@ export default function SubmitReferralPage() {
         return;
       }
       const data = await res.json();
-      setMatchResults(data.match_results ?? []);
       setSubmitted(true);
     } catch {
       setSubmitError("Network error. Please check your connection and try again.");
@@ -167,7 +154,7 @@ export default function SubmitReferralPage() {
               setResumeFile(null);
               setExtraFiles([]);
               setGdprConsent(false);
-              setMatchResults([]);
+
               setSubmitted(false);
             }}
             className="mt-2 text-sm text-brand-teal font-medium hover:underline"
@@ -176,60 +163,6 @@ export default function SubmitReferralPage() {
           </button>
         </div>
 
-        {/* Live match results */}
-        {matchResults.length > 0 && (
-          <div className="bg-white rounded-xl border border-border shadow-sm p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <TrendingUp className="h-4 w-4 text-brand-teal" />
-              <h3 className="font-semibold text-sm text-foreground">AI Match Results</h3>
-              <span className="text-xs text-muted-foreground ml-1">· scored against all open roles</span>
-            </div>
-            <div className="space-y-3">
-              {matchResults
-                .sort((a, b) => b.match_score - a.match_score)
-                .map((m) => {
-                  const job = REFERENCE_JOBS.find((j) => j.id === m.posting_id);
-                  return (
-                    <div key={m.posting_id} className="bg-muted rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <p className="font-medium text-sm text-foreground">{job?.title ?? m.posting_id}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {job?.companyName} · {job?.department}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="text-2xl font-bold text-foreground">{m.match_score}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            m.classification === "Strong Match"
-                              ? "bg-brand-green/10 text-brand-green"
-                              : m.classification === "Partial Match"
-                                ? "bg-brand-gold/10 text-brand-gold"
-                                : "bg-red-100 text-red-500"
-                          }`}>
-                            {m.classification}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {[
-                          { label: "Skill Overlap", value: m.skill_overlap_score },
-                          { label: "Experience", value: m.experience_score },
-                          { label: "Location", value: m.location_score },
-                          { label: "Seniority", value: m.seniority_score },
-                        ].map((item) => (
-                          <div key={item.label} className="bg-white rounded-lg p-2 text-center">
-                            <p className="text-xs text-muted-foreground">{item.label}</p>
-                            <p className="text-base font-bold text-foreground">{item.value}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        )}
       </div>
     );
   }

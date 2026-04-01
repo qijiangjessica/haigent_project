@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setDecision, getDecisions, RecruiterDecision } from "@/lib/reference-store";
+import { getDecisions, type RecruiterDecision } from "@/lib/reference-store";
+import { setDecisionAndPersist } from "@/lib/reference-json-persistence";
 
 export async function GET() {
   return NextResponse.json({ decisions: getDecisions() });
@@ -28,7 +29,8 @@ export async function POST(request: NextRequest) {
       decided_at: new Date().toISOString(),
     };
 
-    setDecision(decision);
+    // Persist decision to store + disk
+    setDecisionAndPersist(decision);
 
     return NextResponse.json({ success: true });
   } catch (error) {

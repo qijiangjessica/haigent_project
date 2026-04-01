@@ -1,26 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  getReferrals, getScoringWeights, type LiveMatchRecord,
-  addReferral, addLiveMatchRecord, addLivePoolEntry,
-  setDecision, rejectReferral, addLiveAuditEvent,
-  setStatusOverride, setScoringWeights,
+  getReferrals,
+  getLiveMatchRecords,
+  getScoringWeights,
+  type LiveMatchRecord,
 } from "@/lib/reference-store";
-import { addReferralAndPersist, addMatchesAndPersist, loadFromDisk } from "@/lib/reference-json-persistence";
-import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
+import { addMatchesAndPersist } from "@/lib/reference-json-persistence";
 import { OPEN_JOBS, type ReferenceJob } from "@/data/reference/jobs";
-import type { SubmittedReferral } from "@/lib/reference-store";
 
-function generateReferralId(): string {
-  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const randPart = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `REF-${datePart}-${randPart}`;
-}
-
-// ── Static (rule-based) scoring ─────────────────────────────────────────────
-// Used when ANTHROPIC_API_KEY is absent or unavailable.
-// Scores are derived purely from keyword matching, experience range checks,
-// and location string comparison — no external API call required.
+// ── Static scoring (mirrors submit route) ───────────────────────────────────
 
 function computeStaticMatchScores(
   candidate: {
@@ -31,7 +20,8 @@ function computeStaticMatchScores(
     availability: string;
   },
   jobs: ReferenceJob[],
-  referralId: string
+  referralId: string,
+  runIndex: number
 ): LiveMatchRecord[] {
   if (jobs.length === 0) return [];
 
@@ -41,7 +31,6 @@ function computeStaticMatchScores(
   const yoe = candidate.years_experience;
 
   return jobs.map((job, i) => {
-    // 1. Skill overlap — ratio of required skills the candidate has claimed
     const reqSkillsLower = job.requiredSkills.map((s) => s.toLowerCase().trim());
     const matched = reqSkillsLower.filter((rs) =>
       candSkillsLower.some((cs) => cs.includes(rs) || rs.includes(cs))
@@ -53,7 +42,6 @@ function computeStaticMatchScores(
         ? 50
         : 25;
 
-    // 2. Experience — penalise under/over relative to job range
     let experience_score: number;
     if (yoe >= job.experienceMin && yoe <= job.experienceMax) {
       experience_score = 90;
@@ -63,7 +51,6 @@ function computeStaticMatchScores(
       experience_score = Math.max(60, 90 - (yoe - job.experienceMax) * 5);
     }
 
-    // 3. Location — token overlap between candidate and job location strings
     const jobLoc = job.location.toLowerCase();
     const candLoc = (candidate.location || "").toLowerCase();
     let location_score: number;
@@ -76,7 +63,6 @@ function computeStaticMatchScores(
       location_score = tokens.some((t) => candLoc.includes(t)) ? 70 : 30;
     }
 
-    // 4. Seniority — derived from years of experience
     let seniority_score: number;
     if (yoe >= 10) seniority_score = 90;
     else if (yoe >= 6) seniority_score = 80;
@@ -95,7 +81,7 @@ function computeStaticMatchScores(
       match_score >= 70 ? "Strong Match" : match_score >= 50 ? "Partial Match" : "No Match";
 
     return {
-      match_id: `STATIC-${referralId}-${i}`,
+      match_id: `RESCORE-${referralId}-R${runIndex}-${i}`,
       referral_id: referralId,
       candidate_name: candidate.name,
       posting_id: job.id,
@@ -111,9 +97,7 @@ function computeStaticMatchScores(
   });
 }
 
-// ── AI (Claude) scoring ─────────────────────────────────────────────────────
-// Used when ANTHROPIC_API_KEY is present.
-// Delegates scoring to claude-haiku; falls back to static on any error.
+// ── AI scoring ───────────────────────────────────────────────────────────────
 
 async function computeAIMatchScores(
   candidate: {
@@ -124,7 +108,8 @@ async function computeAIMatchScores(
     availability: string;
   },
   jobs: ReferenceJob[],
-  referralId: string
+  referralId: string,
+  runIndex: number
 ): Promise<LiveMatchRecord[]> {
   if (jobs.length === 0) return [];
 
@@ -194,7 +179,7 @@ Respond ONLY with a valid JSON array, no other text:
       match_score >= 70 ? "Strong Match" : match_score >= 50 ? "Partial Match" : "No Match";
 
     return {
-      match_id: `AI-${referralId}-${i}`,
+      match_id: `RESCORE-AI-${referralId}-R${runIndex}-${i}`,
       referral_id: referralId,
       candidate_name: candidate.name,
       posting_id: s.posting_id,
@@ -210,97 +195,59 @@ Respond ONLY with a valid JSON array, no other text:
   });
 }
 
-// ── Route handlers ──────────────────────────────────────────────────────────
+// ── POST /api/reference/rescore ──────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json() as { referral_id: string; skills?: string[] };
 
-    const {
-      referrerName, referrerEmpId,
-      candidateName, candidateEmail, candidatePhone,
-      currentEmployer, yearsExperience, location, availability,
-      skills, linkedinUrl, targetJobId, referrerNote,
-      resumeFilename, extraFilenames,
-    } = body;
-
-    if (!referrerName || !candidateName || !candidateEmail || !referrerNote) {
-      return NextResponse.json(
-        { error: "referrerName, candidateName, candidateEmail, and referrerNote are required" },
-        { status: 400 }
-      );
+    if (!body.referral_id) {
+      return NextResponse.json({ error: "referral_id is required" }, { status: 400 });
     }
 
-    const duplicateSeeded = REFERENCE_CANDIDATES.find(
-      (c) => c.email.toLowerCase() === candidateEmail.toLowerCase()
+    // Find the referral
+    const referral = getReferrals().find((r) => r.referral_id === body.referral_id);
+    if (!referral) {
+      return NextResponse.json({ error: "Referral not found" }, { status: 404 });
+    }
+
+    // Skills: use overridden list if provided, otherwise fall back to stored skills
+    const skills = body.skills ?? referral.skills_claimed ?? [];
+
+    // Determine the run index (how many times has this been scored before)
+    const existingMatches = getLiveMatchRecords().filter(
+      (m) => m.referral_id === body.referral_id
     );
-    const duplicateSubmitted = getReferrals().find(
-      (r) => r.candidate_email.toLowerCase() === candidateEmail.toLowerCase()
-    );
-    const duplicate = duplicateSeeded ?? duplicateSubmitted ?? null;
-
-    const skillList =
-      typeof skills === "string"
-        ? skills.split(",").map((s: string) => s.trim()).filter(Boolean)
-        : Array.isArray(skills)
-        ? skills
-        : [];
-
-
-    const referral: SubmittedReferral = {
-      referral_id: generateReferralId(),
-      submitted_at: new Date().toISOString(),
-      referrer_name: referrerName,
-      referrer_emp_id: referrerEmpId ?? "",
-      candidate_name: candidateName,
-      candidate_email: candidateEmail,
-      candidate_phone: candidatePhone ?? "",
-      current_employer: currentEmployer ?? "",
-      years_experience: Number(yearsExperience) || 0,
-      location: location ?? "",
-      availability: availability ?? "",
-      linkedin_url: linkedinUrl ?? "",
-      target_job_id: targetJobId ?? "pool",
-      referrer_note: referrerNote,
-      resume_filename: resumeFilename ?? null,
-      extra_filenames: extraFilenames ?? [],
-      is_duplicate: !!duplicate,
-      duplicate_candidate_id: duplicateSeeded?.candidate_id ?? null,
-      skills_claimed: skillList,
-    };
-
-    // Persist referral to store + disk
-    addReferralAndPersist(referral);
+    const runIndex = existingMatches.length > 0
+      ? Math.max(...existingMatches.map((m) => {
+          const match = m.match_id.match(/R(\d+)-/);
+          return match ? parseInt(match[1]) : 0;
+        })) + 1
+      : 1;
 
     const candidateInput = {
-      name: candidateName,
-      skills: skillList,
-      years_experience: Number(yearsExperience) || 0,
-      location: location ?? "",
-      availability: availability ?? "",
+      name: referral.candidate_name,
+      skills,
+      years_experience: referral.years_experience,
+      location: referral.location,
+      availability: referral.availability,
     };
 
     let matchResults: LiveMatchRecord[] = [];
     let scoringMethod: "ai" | "static" = "static";
 
     if (process.env.ANTHROPIC_API_KEY) {
-      // API key present — attempt AI scoring, fall back to static on failure
       try {
-        matchResults = await computeAIMatchScores(candidateInput, OPEN_JOBS, referral.referral_id);
+        matchResults = await computeAIMatchScores(candidateInput, OPEN_JOBS, referral.referral_id, runIndex);
         scoringMethod = "ai";
       } catch (err) {
-        console.error("AI scoring failed, falling back to static scoring:", err);
-        matchResults = computeStaticMatchScores(candidateInput, OPEN_JOBS, referral.referral_id);
-        scoringMethod = "static";
+        console.error("AI re-scoring failed, falling back to static:", err);
+        matchResults = computeStaticMatchScores(candidateInput, OPEN_JOBS, referral.referral_id, runIndex);
       }
     } else {
-      // No API key — use static scoring directly
-      console.info("ANTHROPIC_API_KEY not set — using static (rule-based) scoring.");
-      matchResults = computeStaticMatchScores(candidateInput, OPEN_JOBS, referral.referral_id);
-      scoringMethod = "static";
+      matchResults = computeStaticMatchScores(candidateInput, OPEN_JOBS, referral.referral_id, runIndex);
     }
 
-    // Persist all match records to store + disk in one batch write
     if (matchResults.length > 0) {
       addMatchesAndPersist(matchResults);
     }
@@ -308,31 +255,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       referral_id: referral.referral_id,
-      is_duplicate: referral.is_duplicate,
-      duplicate_candidate_id: referral.duplicate_candidate_id,
-      match_results: matchResults,
       scoring_method: scoringMethod,
+      run_index: runIndex,
+      match_results: matchResults,
     });
   } catch (error) {
-    console.error("Reference submit error:", error);
+    console.error("Re-score error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-}
-
-export async function GET() {
-  // Hydrate from disk if the in-memory store was cleared (e.g. HMR in dev)
-  if (getReferrals().length === 0) {
-    try {
-      const snap = loadFromDisk();
-      for (const r of snap.referrals)     addReferral(r);
-      for (const m of snap.matches)       addLiveMatchRecord(m);
-      for (const p of snap.poolEntries)   addLivePoolEntry(p);
-      for (const d of snap.decisions)     setDecision(d);
-      for (const id of snap.rejectedIds)  rejectReferral(id);
-      for (const e of snap.auditEvents)   addLiveAuditEvent(e);
-      for (const [k, v] of Object.entries(snap.statusOverrides)) setStatusOverride(k, v);
-      setScoringWeights(snap.scoringWeights);
-    } catch { /* no disk data yet */ }
-  }
-  return NextResponse.json({ referrals: getReferrals() });
 }

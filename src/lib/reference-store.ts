@@ -49,6 +49,7 @@ export interface SubmittedReferral {
   extra_filenames: string[];
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
+  skills_claimed: string[];
 }
 
 const referrals: SubmittedReferral[] = [];
@@ -126,6 +127,7 @@ export interface LiveMatchRecord {
   seniority_score: number;
   classification: "Strong Match" | "Partial Match" | "No Match";
   evaluated_date: string;
+  scoring_method: "ai" | "static";
 }
 
 const liveMatchRecords: LiveMatchRecord[] = [];

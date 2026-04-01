@@ -938,19 +938,23 @@ export default function TalentPoolPage() {
                     )}
                   </div>
 
-                  {/* AI Match Scores — always visible */}
+                  {/* Job Matches */}
                   <div className="mt-3 pt-3 border-t border-border">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-1.5">
-                        <TrendingUp className="h-3.5 w-3.5 text-brand-teal" />
-                        <p className="text-xs font-semibold text-foreground">AI Match Scores</p>
+                        <p className="text-xs font-medium text-muted-foreground">Job Matches</p>
+                        {sortedMatches.length > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                            {sortedMatches[0]?.scoring_method === "ai" ? "Claude AI" : "Rule-based"}
+                          </span>
+                        )}
                       </div>
                       {sortedMatches.length > 0 && (
                         <button
                           onClick={() => toggleScore(`ref-${referral.referral_id}`)}
                           className="flex items-center gap-1 text-xs text-brand-teal hover:underline"
                         >
-                          Component detail
+                          Score breakdown
                           {scoreExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         </button>
                       )}
@@ -958,44 +962,21 @@ export default function TalentPoolPage() {
                     {sortedMatches.length === 0 ? (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        AI scoring pending…
+                        No scores yet
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {sortedMatches.map((m) => {
                           const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
                           return (
-                            <div key={m.match_id} className={`rounded-lg border px-3 py-2.5 ${
-                              m.classification === "Strong Match" ? "border-brand-green/20 bg-brand-green/5"
-                                : m.classification === "Partial Match" ? "border-brand-gold/20 bg-brand-gold/5"
-                                  : "border-border bg-muted/40"
-                            }`}>
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-foreground truncate">{jobTitle}</p>
-                                <div className="flex items-center gap-1.5 flex-shrink-0">
-                                  <span className="text-lg font-bold text-foreground">{m.match_score}</span>
-                                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                                    m.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
-                                      : m.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
-                                        : "bg-muted text-muted-foreground"
-                                  }`}>{m.classification}</span>
-                                </div>
-                              </div>
-                              <div className="mt-2 grid grid-cols-4 gap-1 text-center">
-                                {[
-                                  { label: "Skill", value: m.skill_overlap_score },
-                                  { label: "Exp",   value: m.experience_score },
-                                  { label: "Loc",   value: m.location_score },
-                                  { label: "Sen",   value: m.seniority_score },
-                                ].map((c) => (
-                                  <div key={c.label}>
-                                    <p className="text-[10px] text-muted-foreground">{c.label}</p>
-                                    <p className={`text-xs font-bold ${c.value >= 70 ? "text-brand-green" : c.value >= 50 ? "text-brand-gold" : "text-muted-foreground"}`}>
-                                      {c.value}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
+                            <div key={m.match_id} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
+                              <span className="text-muted-foreground">{jobTitle}</span>
+                              <span className="font-semibold text-foreground">{m.match_score}</span>
+                              <span className={
+                                m.classification === "Strong Match" ? "text-brand-green"
+                                  : m.classification === "Partial Match" ? "text-brand-gold"
+                                    : "text-muted-foreground"
+                              }>· {m.classification}</span>
                             </div>
                           );
                         })}
@@ -1003,26 +984,36 @@ export default function TalentPoolPage() {
                     )}
                     {scoreExpanded && sortedMatches.length > 0 && (
                       <div className="mt-3 space-y-2">
-                        {sortedMatches.map((m) => (
-                          <div key={m.match_id} className="bg-muted rounded-lg p-3">
-                            <p className="text-xs font-semibold text-foreground mb-2">
-                              {REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id}
-                            </p>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                              {[
-                                { label: "Skill Overlap", value: m.skill_overlap_score },
-                                { label: "Experience",    value: m.experience_score },
-                                { label: "Location",      value: m.location_score },
-                                { label: "Seniority",     value: m.seniority_score },
-                              ].map((item) => (
-                                <div key={item.label} className="text-center bg-white rounded-lg p-2">
-                                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                                  <p className="text-lg font-bold text-foreground">{item.value}</p>
-                                </div>
-                              ))}
+                        {sortedMatches.map((m) => {
+                          const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
+                          return (
+                            <div key={m.match_id} className="bg-muted rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs font-semibold text-foreground">{jobTitle}</p>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  m.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                                    : m.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                                      : "bg-muted text-muted-foreground"
+                                }`}>
+                                  {m.match_score} · {m.classification}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {[
+                                  { label: "Skill Overlap", value: m.skill_overlap_score },
+                                  { label: "Experience",    value: m.experience_score },
+                                  { label: "Location",      value: m.location_score },
+                                  { label: "Seniority",     value: m.seniority_score },
+                                ].map((item) => (
+                                  <div key={item.label} className="text-center">
+                                    <p className="text-xs text-muted-foreground">{item.label}</p>
+                                    <p className="text-lg font-bold text-foreground">{item.value}</p>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

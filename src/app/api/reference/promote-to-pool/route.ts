@@ -3,10 +3,9 @@ import {
   getReferrals,
   getLiveMatchRecords,
   getLivePoolEntry,
-  addLivePoolEntry,
-  addLiveAuditEvent,
-  LivePoolEntry,
+  type LivePoolEntry,
 } from "@/lib/reference-store";
+import { addPoolEntryAndPersist, addAuditEventAndPersist } from "@/lib/reference-json-persistence";
 
 const VALID_EXPERIENCE_LEVELS = ["Junior", "Mid", "Senior", "Lead"] as const;
 
@@ -104,10 +103,11 @@ export async function POST(request: NextRequest) {
       promoted_by,
     };
 
-    addLivePoolEntry(entry);
+    // Persist pool entry to store + disk
+    addPoolEntryAndPersist(entry);
 
-    // Write audit event for lineage
-    addLiveAuditEvent({
+    // Write audit event for lineage and persist
+    addAuditEventAndPersist({
       event_id: `EVT-PROMO-${Date.now()}`,
       timestamp: new Date().toISOString(),
       actor: promoted_by,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -16,6 +16,12 @@ interface SidebarProps {
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [referenceOpen, setReferenceOpen] = useState(false);
+
+  useEffect(() => {
+    if (!pathname.startsWith("/reference")) {
+      setReferenceOpen(false);
+    }
+  }, [pathname]);
 
   const activeModule = AI_MODULES.find(
     (m) => m.enabled && pathname.startsWith(`/${m.slug}`)

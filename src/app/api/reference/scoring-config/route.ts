@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getScoringWeights,
-  setScoringWeights,
   DEFAULT_SCORING_WEIGHTS,
-  ScoringWeights,
+  type ScoringWeights,
 } from "@/lib/reference-store";
+import { setScoringWeightsAndPersist } from "@/lib/reference-json-persistence";
 
 export async function GET() {
   return NextResponse.json({ weights: getScoringWeights() });
@@ -26,7 +26,8 @@ export async function PUT(request: NextRequest) {
         { status: 400 }
       );
     }
-    setScoringWeights(weights);
+    // Persist weights to store + disk
+    setScoringWeightsAndPersist(weights);
     return NextResponse.json({ success: true, weights });
   } catch (error) {
     console.error("Scoring config error:", error);

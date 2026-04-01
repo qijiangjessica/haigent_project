@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getReferrals,
-  rejectReferral,
-  getRejectedReferralIds,
-  addLiveAuditEvent,
-} from "@/lib/reference-store";
+import { getReferrals, getRejectedReferralIds } from "@/lib/reference-store";
+import { rejectReferralAndPersist, addAuditEventAndPersist } from "@/lib/reference-json-persistence";
 
 export async function GET() {
   return NextResponse.json({ rejected_ids: getRejectedReferralIds() });
@@ -26,9 +22,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Referral not found" }, { status: 404 });
     }
 
-    rejectReferral(referral_id);
+    // Persist rejection to store + disk
+    rejectReferralAndPersist(referral_id);
 
-    addLiveAuditEvent({
+    addAuditEventAndPersist({
       event_id: `EVT-REJ-${Date.now()}`,
       timestamp: new Date().toISOString(),
       actor: "Recruiter",

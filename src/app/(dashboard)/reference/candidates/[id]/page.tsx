@@ -7,6 +7,7 @@ import {
   ArrowLeft, CheckCircle2, Clock, XCircle,
   ExternalLink, FileText, User, Building2,
   MapPin, Calendar, Briefcase, TrendingUp, Sparkles, Loader2,
+  Circle, GitCommitHorizontal,
 } from "lucide-react";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
@@ -566,6 +567,133 @@ Cover: overall profile strength, key verified strengths, any notable skill gaps,
           </div>
         </div>
       )}
+
+      {/* Status Timeline */}
+      {(() => {
+        // Ordered pipeline steps
+        const PIPELINE: { key: string; label: string; color: string; dotColor: string }[] = [
+          { key: "pending_validation",       label: "Pending",          color: "text-muted-foreground", dotColor: "bg-muted" },
+          { key: "verification_in_progress", label: "Verifying",        color: "text-brand-gold",       dotColor: "bg-brand-gold" },
+          { key: "matched",                  label: "Matched",          color: "text-brand-cyan",       dotColor: "bg-brand-cyan" },
+          { key: "in_pool",                  label: "In Pool",          color: "text-brand-teal",       dotColor: "bg-brand-teal" },
+          { key: "hired",                    label: "Hired",            color: "text-brand-green",      dotColor: "bg-brand-green" },
+        ];
+
+        // Closed is a terminal state outside the normal pipeline
+        const isClosed = displayStatus === "closed";
+
+        // Determine which pipeline step is active (or furthest reached)
+        const activeIdx = isClosed
+          ? -1
+          : PIPELINE.findIndex((s) => s.key === displayStatus);
+        const reachedIdx = activeIdx === -1 ? -1 : activeIdx;
+
+        // Build per-step timestamps from audit log
+        const timestampByStatus: Record<string, string> = {};
+        allAuditEvents.forEach((e) => {
+          if (e.after_state && !timestampByStatus[e.after_state]) {
+            timestampByStatus[e.after_state] = e.timestamp;
+          }
+        });
+        return (
+          <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-5">
+              <GitCommitHorizontal className="h-4 w-4 text-muted-foreground" />
+              <h2 className="font-semibold text-sm text-foreground">Status Timeline</h2>
+              {isClosed && (
+                <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                  Closed
+                </span>
+              )}
+            </div>
+
+            {isClosed ? (
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <XCircle className="h-5 w-5 text-destructive flex-shrink-0" />
+                This candidate's referral has been closed.
+                {timestampByStatus["closed"] && (
+                  <span className="text-xs ml-auto">
+                    {new Date(timestampByStatus["closed"]).toLocaleDateString("en-CA")}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="relative">
+                {/* Connecting line */}
+                <div className="absolute top-3.5 left-3.5 right-3.5 h-px bg-border" />
+
+                <div className="flex items-start justify-between relative gap-2">
+                  {PIPELINE.map((step, idx) => {
+                    const done = idx < reachedIdx;
+                    const active = idx === reachedIdx;
+                    const pending = idx > reachedIdx;
+                    const ts = timestampByStatus[step.key];
+
+                    return (
+                      <div key={step.key} className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
+                        {/* Dot */}
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center z-10 border-2 transition-colors ${
+                          done
+                            ? `${step.dotColor} border-transparent`
+                            : active
+                              ? `${step.dotColor} border-white ring-2 ring-offset-1 ring-current`
+                              : "bg-white border-border"
+                        } ${active ? step.color : ""}`}>
+                          {done ? (
+                            <CheckCircle2 className="h-4 w-4 text-white" />
+                          ) : active ? (
+                            <Circle className="h-3 w-3 fill-current" />
+                          ) : (
+                            <Circle className="h-3 w-3 text-muted-foreground/30" />
+                          )}
+                        </div>
+
+                        {/* Label */}
+                        <span className={`text-xs font-medium text-center leading-tight ${
+                          done ? "text-foreground" : active ? step.color : "text-muted-foreground/50"
+                        }`}>
+                          {step.label}
+                        </span>
+
+                        {/* Timestamp */}
+                        {ts && !pending && (
+                          <span className="text-[10px] text-muted-foreground text-center leading-tight">
+                            {new Date(ts).toLocaleDateString("en-CA")}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Recent transitions from audit log */}
+            {allAuditEvents.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-border space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Recent transitions</p>
+                {allAuditEvents.slice(-4).reverse().map((e) => (
+                  <div key={e.event_id} className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground w-28 flex-shrink-0">
+                      {new Date(e.timestamp).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}
+                    </span>
+                    <span className="font-medium text-foreground">{e.event_type}</span>
+                    {e.before_state && (
+                      <>
+                        <span className="text-muted-foreground">{STATUS_LABELS[e.before_state] ?? e.before_state}</span>
+                        <span className="text-muted-foreground">→</span>
+                        <span className="font-medium text-foreground">{STATUS_LABELS[e.after_state] ?? e.after_state}</span>
+                      </>
+                    )}
+                    {e.notes && <span className="text-muted-foreground truncate">· {e.notes}</span>}
+                    <span className="ml-auto text-muted-foreground">by {e.actor}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Audit Trail */}
       {allAuditEvents.length > 0 && (
