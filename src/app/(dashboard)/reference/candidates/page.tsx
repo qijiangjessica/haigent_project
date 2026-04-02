@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
 import { MATCH_RECORDS } from "@/data/reference/matches";
-import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle, Square, CheckSquare, Minus } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle, Square, CheckSquare, Minus, Users, Filter } from "lucide-react";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { AUDIT_LOG } from "@/data/reference/audit-log";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
@@ -643,8 +643,42 @@ export default function CandidatesPage() {
       </div>
 
       {filtered.length === 0 && submittedReferrals.length === 0 && (
-        <div className="bg-white rounded-xl border border-border shadow-sm p-10 text-center">
-          <p className="text-muted-foreground text-sm">No candidates match your filters.</p>
+        <div className="bg-white rounded-xl border border-border shadow-sm p-10 flex flex-col items-center text-center gap-3">
+          {(search || statusFilter !== "all" || matchFilter !== "all") ? (
+            <>
+              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                <Filter className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground text-sm">No candidates match your filters</p>
+                <p className="text-xs text-muted-foreground mt-1">Try clearing the search or broadening the status / match filter.</p>
+              </div>
+              <button
+                onClick={() => { setSearch(""); setStatusFilter("all"); setMatchFilter("all"); }}
+                className="text-xs text-brand-teal font-medium hover:underline"
+              >
+                Clear all filters
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="w-12 h-12 rounded-full bg-brand-teal/10 flex items-center justify-center">
+                <Users className="h-5 w-5 text-brand-teal" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground text-sm">No candidates yet</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Refer your first candidate to start building your pipeline. Candidates are scored against open roles automatically.
+                </p>
+              </div>
+              <Link
+                href="/reference/submit"
+                className="text-xs px-4 py-2 rounded-lg bg-brand-teal text-white font-medium hover:bg-brand-teal/90 transition-colors"
+              >
+                Submit a Referral
+              </Link>
+            </>
+          )}
         </div>
       )}
 
@@ -1042,7 +1076,13 @@ export default function CandidatesPage() {
           <div className="grid gap-4">
             {submittedReferrals.map((referral) => {
               const matches = liveMatches.filter((m) => m.referral_id === referral.referral_id);
-              const sortedMatches = [...matches].sort((a, b) => b.match_score - a.match_score);
+              // Deduplicate: keep the latest match per posting_id (handles re-score runs)
+              const latestByJob = matches.reduce<Record<string, LiveMatchRecord>>((acc, m) => {
+                const existing = acc[m.posting_id];
+                if (!existing || m.evaluated_date >= existing.evaluated_date) acc[m.posting_id] = m;
+                return acc;
+              }, {});
+              const sortedMatches = Object.values(latestByJob).sort((a, b) => b.match_score - a.match_score);
               const bestMatch = sortedMatches[0] ?? null;
               const liveScoreExpanded = expandedLiveScores.has(referral.referral_id);
               const isPromoted = !!promotedMap[referral.referral_id];

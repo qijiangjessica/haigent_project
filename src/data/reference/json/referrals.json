@@ -46,5 +46,33 @@
       "Python",
       "Sql"
     ]
+  },
+  {
+    "referral_id": "REF-20260402-IZAE",
+    "submitted_at": "2026-04-02T16:24:55.778Z",
+    "referrer_name": "siva",
+    "referrer_emp_id": "39",
+    "candidate_name": "Alex Jane",
+    "candidate_email": "alex.jane@gmail.com",
+    "candidate_phone": "519999090",
+    "current_employer": "TD",
+    "years_experience": 2,
+    "location": "Vancouver",
+    "availability": "2 weeks",
+    "linkedin_url": "",
+    "target_job_id": "pool",
+    "referrer_note": "Good fit for data engineering roles",
+    "resume_filename": null,
+    "extra_filenames": [],
+    "is_duplicate": false,
+    "duplicate_candidate_id": null,
+    "skills_claimed": [
+      "Python",
+      "ML",
+      "AI",
+      "Azure",
+      "Docker",
+      "SQL"
+    ]
   }
 ]

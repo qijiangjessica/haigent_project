@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   getReferrals,
   getLiveMatchRecords,
-  getScoringWeights,
+  getEffectiveWeights,
   type LiveMatchRecord,
 } from "@/lib/reference-store";
 import { addMatchesAndPersist } from "@/lib/reference-json-persistence";
@@ -25,12 +25,12 @@ function computeStaticMatchScores(
 ): LiveMatchRecord[] {
   if (jobs.length === 0) return [];
 
-  const weights = getScoringWeights();
   const today = new Date().toISOString().slice(0, 10);
   const candSkillsLower = candidate.skills.map((s) => s.toLowerCase().trim());
   const yoe = candidate.years_experience;
 
   return jobs.map((job, i) => {
+    const weights = getEffectiveWeights(job.id);
     const reqSkillsLower = job.requiredSkills.map((s) => s.toLowerCase().trim());
     const matched = reqSkillsLower.filter((rs) =>
       candSkillsLower.some((cs) => cs.includes(rs) || rs.includes(cs))
@@ -114,7 +114,6 @@ async function computeAIMatchScores(
   if (jobs.length === 0) return [];
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const weights = getScoringWeights();
   const today = new Date().toISOString().slice(0, 10);
 
   const jobsText = jobs
@@ -168,6 +167,7 @@ Respond ONLY with a valid JSON array, no other text:
   }>;
 
   return scores.map((s, i) => {
+    const weights = getEffectiveWeights(s.posting_id);
     const match_score = Math.round(
       (s.skill_overlap_score * weights.skill +
         s.experience_score * weights.experience +

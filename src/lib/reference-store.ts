@@ -28,6 +28,36 @@ export function setScoringWeights(weights: ScoringWeights): void {
   scoringWeights = { ...weights };
 }
 
+// ── Per-job scoring weight overrides ──────────────────────────────
+// When set, a job's override takes precedence over the global weights
+// for scoring and re-scoring against that specific posting.
+
+const jobWeightOverrides = new Map<string, ScoringWeights>();
+
+export function setJobWeightOverride(jobId: string, weights: ScoringWeights): void {
+  jobWeightOverrides.set(jobId, { ...weights });
+}
+
+export function getJobWeightOverride(jobId: string): ScoringWeights | undefined {
+  const w = jobWeightOverrides.get(jobId);
+  return w ? { ...w } : undefined;
+}
+
+export function getAllJobWeightOverrides(): Record<string, ScoringWeights> {
+  return Object.fromEntries(jobWeightOverrides);
+}
+
+export function deleteJobWeightOverride(jobId: string): void {
+  jobWeightOverrides.delete(jobId);
+}
+
+/** Returns the job-level override if one exists, otherwise falls back to the global weights. */
+export function getEffectiveWeights(jobId: string): ScoringWeights {
+  return jobWeightOverrides.has(jobId)
+    ? { ...jobWeightOverrides.get(jobId)! }
+    : getScoringWeights();
+}
+
 // ── Submitted referrals ────────────────────────────────────────────
 
 export interface SubmittedReferral {
@@ -46,6 +76,9 @@ export interface SubmittedReferral {
   target_job_id: string;
   referrer_note: string;
   resume_filename: string | null;
+  resume_text: string | null;        // extracted plain text from the uploaded resume
+  resume_format: string | null;      // pdf | docx | doc | txt
+  resume_word_count: number | null;  // word count of extracted text
   extra_filenames: string[];
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
@@ -60,6 +93,17 @@ export function addReferral(referral: SubmittedReferral): void {
 
 export function getReferrals(): SubmittedReferral[] {
   return [...referrals];
+}
+
+/** Partial-update a referral in-place. Returns true if found, false if not. */
+export function updateReferral(
+  referralId: string,
+  patch: Partial<Omit<SubmittedReferral, "referral_id" | "submitted_at" | "is_duplicate" | "duplicate_candidate_id">>
+): boolean {
+  const idx = referrals.findIndex((r) => r.referral_id === referralId);
+  if (idx === -1) return false;
+  referrals[idx] = { ...referrals[idx], ...patch };
+  return true;
 }
 
 // ── Recruiter decisions ────────────────────────────────────────────

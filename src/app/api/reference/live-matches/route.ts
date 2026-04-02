@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getLiveMatchRecords, addLiveMatchRecord, addReferral, getReferrals,
   addLivePoolEntry, setDecision, rejectReferral, addLiveAuditEvent,
-  setStatusOverride, setScoringWeights,
+  setStatusOverride, setScoringWeights, setJobWeightOverride,
 } from "@/lib/reference-store";
 import { loadFromDisk } from "@/lib/reference-json-persistence";
 
@@ -18,6 +18,7 @@ function hydrateIfEmpty() {
       for (const e of snap.auditEvents)   addLiveAuditEvent(e);
       for (const [k, v] of Object.entries(snap.statusOverrides)) setStatusOverride(k, v);
       setScoringWeights(snap.scoringWeights);
+      for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
     } catch { /* no disk data yet — start empty */ }
   }
 }

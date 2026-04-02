@@ -17,7 +17,7 @@
 import fs from "fs";
 import path from "path";
 import {
-  addReferral, getReferrals,
+  addReferral, getReferrals, updateReferral,
   addLiveMatchRecord, getLiveMatchRecords,
   addLivePoolEntry, getLivePoolEntries,
   setDecision, getDecisions,
@@ -25,6 +25,7 @@ import {
   addLiveAuditEvent, getLiveAuditEvents,
   setStatusOverride, getAllStatusOverrides,
   setScoringWeights, getScoringWeights,
+  setJobWeightOverride, getJobWeightOverride, getAllJobWeightOverrides, deleteJobWeightOverride,
   type SubmittedReferral,
   type LiveMatchRecord,
   type LivePoolEntry,
@@ -53,6 +54,7 @@ export interface StoreSnapshot {
   auditEvents: LiveAuditEvent[];
   statusOverrides: Record<string, string>;
   scoringWeights: PersistedScoringWeights;
+  jobWeightOverrides: Record<string, PersistedScoringWeights>;
 }
 
 // ── File paths ──────────────────────────────────────────────────────────────
@@ -60,14 +62,15 @@ export interface StoreSnapshot {
 const JSON_DIR = path.join(process.cwd(), "src", "data", "reference", "json");
 
 const FILES = {
-  referrals:       path.join(JSON_DIR, "referrals.json"),
-  matches:         path.join(JSON_DIR, "matches.json"),
-  poolEntries:     path.join(JSON_DIR, "pool-entries.json"),
-  decisions:       path.join(JSON_DIR, "decisions.json"),
-  rejectedIds:     path.join(JSON_DIR, "rejected-ids.json"),
-  auditEvents:     path.join(JSON_DIR, "audit-events.json"),
-  statusOverrides: path.join(JSON_DIR, "status-overrides.json"),
-  scoringWeights:  path.join(JSON_DIR, "scoring-weights.json"),
+  referrals:          path.join(JSON_DIR, "referrals.json"),
+  matches:            path.join(JSON_DIR, "matches.json"),
+  poolEntries:        path.join(JSON_DIR, "pool-entries.json"),
+  decisions:          path.join(JSON_DIR, "decisions.json"),
+  rejectedIds:        path.join(JSON_DIR, "rejected-ids.json"),
+  auditEvents:        path.join(JSON_DIR, "audit-events.json"),
+  statusOverrides:    path.join(JSON_DIR, "status-overrides.json"),
+  scoringWeights:     path.join(JSON_DIR, "scoring-weights.json"),
+  jobWeightOverrides: path.join(JSON_DIR, "job-weight-overrides.json"),
 } as const;
 
 // ── Internal helpers ────────────────────────────────────────────────────────
@@ -107,29 +110,31 @@ function writeJson(filePath: string, data: unknown): void {
 /** Load the full persisted snapshot from disk. Returns empty defaults for missing files. */
 export function loadFromDisk(): StoreSnapshot {
   return {
-    referrals:       readJson<SubmittedReferral[]>(FILES.referrals, []),
-    matches:         readJson<LiveMatchRecord[]>(FILES.matches, []),
-    poolEntries:     readJson<LivePoolEntry[]>(FILES.poolEntries, []),
-    decisions:       readJson<RecruiterDecision[]>(FILES.decisions, []),
-    rejectedIds:     readJson<string[]>(FILES.rejectedIds, []),
-    auditEvents:     readJson<LiveAuditEvent[]>(FILES.auditEvents, []),
-    statusOverrides: readJson<Record<string, string>>(FILES.statusOverrides, {}),
-    scoringWeights:  readJson<PersistedScoringWeights>(FILES.scoringWeights, {
+    referrals:          readJson<SubmittedReferral[]>(FILES.referrals, []),
+    matches:            readJson<LiveMatchRecord[]>(FILES.matches, []),
+    poolEntries:        readJson<LivePoolEntry[]>(FILES.poolEntries, []),
+    decisions:          readJson<RecruiterDecision[]>(FILES.decisions, []),
+    rejectedIds:        readJson<string[]>(FILES.rejectedIds, []),
+    auditEvents:        readJson<LiveAuditEvent[]>(FILES.auditEvents, []),
+    statusOverrides:    readJson<Record<string, string>>(FILES.statusOverrides, {}),
+    scoringWeights:     readJson<PersistedScoringWeights>(FILES.scoringWeights, {
       skill: 50, experience: 25, location: 15, seniority: 10,
     }),
+    jobWeightOverrides: readJson<Record<string, PersistedScoringWeights>>(FILES.jobWeightOverrides, {}),
   };
 }
 
 /** Persist the entire store snapshot to disk in one call. */
 export function saveToDisk(snapshot: StoreSnapshot): void {
-  writeJson(FILES.referrals,       snapshot.referrals);
-  writeJson(FILES.matches,         snapshot.matches);
-  writeJson(FILES.poolEntries,     snapshot.poolEntries);
-  writeJson(FILES.decisions,       snapshot.decisions);
-  writeJson(FILES.rejectedIds,     snapshot.rejectedIds);
-  writeJson(FILES.auditEvents,     snapshot.auditEvents);
-  writeJson(FILES.statusOverrides, snapshot.statusOverrides);
-  writeJson(FILES.scoringWeights,  snapshot.scoringWeights);
+  writeJson(FILES.referrals,          snapshot.referrals);
+  writeJson(FILES.matches,            snapshot.matches);
+  writeJson(FILES.poolEntries,        snapshot.poolEntries);
+  writeJson(FILES.decisions,          snapshot.decisions);
+  writeJson(FILES.rejectedIds,        snapshot.rejectedIds);
+  writeJson(FILES.auditEvents,        snapshot.auditEvents);
+  writeJson(FILES.statusOverrides,    snapshot.statusOverrides);
+  writeJson(FILES.scoringWeights,     snapshot.scoringWeights);
+  writeJson(FILES.jobWeightOverrides, snapshot.jobWeightOverrides);
 }
 
 // ── Wired functions (store mutation + disk write) ───────────────────────────
@@ -139,6 +144,16 @@ export function saveToDisk(snapshot: StoreSnapshot): void {
 export function addReferralAndPersist(referral: SubmittedReferral): void {
   addReferral(referral);
   writeJson(FILES.referrals, getReferrals());
+}
+
+/** Update a referral in the store and immediately persist referrals to disk. Returns false if not found. */
+export function updateReferralAndPersist(
+  referralId: string,
+  patch: Partial<Omit<SubmittedReferral, "referral_id" | "submitted_at" | "is_duplicate" | "duplicate_candidate_id">>
+): boolean {
+  const updated = updateReferral(referralId, patch);
+  if (updated) writeJson(FILES.referrals, getReferrals());
+  return updated;
 }
 
 /** Add a match record to the store and immediately persist matches to disk. */
@@ -187,6 +202,18 @@ export function setStatusOverrideAndPersist(candidateId: string, status: string)
 export function setScoringWeightsAndPersist(weights: ScoringWeights): void {
   setScoringWeights(weights);
   writeJson(FILES.scoringWeights, getScoringWeights());
+}
+
+/** Set a per-job weight override and immediately persist to disk. */
+export function setJobWeightOverrideAndPersist(jobId: string, weights: ScoringWeights): void {
+  setJobWeightOverride(jobId, weights);
+  writeJson(FILES.jobWeightOverrides, getAllJobWeightOverrides());
+}
+
+/** Remove a per-job weight override and immediately persist to disk. */
+export function deleteJobWeightOverrideAndPersist(jobId: string): void {
+  deleteJobWeightOverride(jobId);
+  writeJson(FILES.jobWeightOverrides, getAllJobWeightOverrides());
 }
 
 // ── Standalone persistX() helpers (commented out — replaced by wired functions above) ──

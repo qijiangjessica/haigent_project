@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { MATCH_RECORDS } from "@/data/reference/matches";
-import { REFERENCE_JOBS } from "@/data/reference/jobs";
+import { REFERENCE_JOBS, OPEN_JOBS } from "@/data/reference/jobs";
 import {
   Settings2,
   RotateCcw,
@@ -13,6 +13,13 @@ import {
   Loader2,
   TrendingUp,
   Info,
+  Sliders,
+  X,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  ArrowRight,
+  Users,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -107,6 +114,15 @@ const PREVIEW_RECORDS = MATCH_RECORDS.slice(0, 6);
 
 // ── Component ──────────────────────────────────────────────────────
 
+interface JobOverrideEntry {
+  job_id: string;
+  title: string;
+  department: string;
+  has_override: boolean;
+  effective_weights: ScoringWeights;
+  override: ScoringWeights | null;
+}
+
 export default function ScoringConfigPage() {
   const [weights, setWeights] = useState<ScoringWeights>(DEFAULT_WEIGHTS);
   const [saved, setSaved] = useState<ScoringWeights>(DEFAULT_WEIGHTS);
@@ -115,14 +131,43 @@ export default function ScoringConfigPage() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Load current weights from API on mount
+  // Bulk re-score state
+  const [rescoreRunning, setRescoreRunning] = useState(false);
+  const [rescoreProgress, setRescoreProgress] = useState<{ done: number; total: number } | null>(null);
+  const [rescoreResults, setRescoreResults] = useState<{
+    total: number;
+    improved: number;
+    unchanged: number;
+    decreased: number;
+    rows: { name: string; oldBest: number | null; newBest: number; delta: number }[];
+  } | null>(null);
+  const [rescoreError, setRescoreError] = useState<string | null>(null);
+
+  // Per-job overrides state
+  const [jobEntries, setJobEntries] = useState<JobOverrideEntry[]>([]);
+  const [expandedJob, setExpandedJob] = useState<string | null>(null);
+  const [jobDrafts, setJobDrafts] = useState<Record<string, ScoringWeights>>({});
+  const [jobSaving, setJobSaving] = useState<string | null>(null);
+  const [jobSaveStatus, setJobSaveStatus] = useState<Record<string, "idle" | "success" | "error">>({});
+
+  // Load current weights + job overrides from API on mount
   useEffect(() => {
-    fetch("/api/reference/scoring-config")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.weights) {
-          setWeights(data.weights);
-          setSaved(data.weights);
+    Promise.all([
+      fetch("/api/reference/scoring-config").then((r) => r.json()),
+      fetch("/api/reference/job-weights").then((r) => r.json()),
+    ])
+      .then(([configData, jobData]) => {
+        if (configData.weights) {
+          setWeights(configData.weights);
+          setSaved(configData.weights);
+        }
+        if (jobData.jobs) {
+          setJobEntries(jobData.jobs);
+          const drafts: Record<string, ScoringWeights> = {};
+          for (const j of jobData.jobs as JobOverrideEntry[]) {
+            drafts[j.job_id] = { ...j.effective_weights };
+          }
+          setJobDrafts(drafts);
         }
       })
       .catch(() => {})
@@ -211,6 +256,157 @@ export default function ScoringConfigPage() {
       setSaving(false);
     }
   };
+
+  // ── Bulk re-score handler ───────────────────────────────────────
+
+  async function handleBulkRescore() {
+    if (rescoreRunning) return;
+    setRescoreRunning(true);
+    setRescoreResults(null);
+    setRescoreError(null);
+    setRescoreProgress(null);
+
+    try {
+      // 1. Fetch all submitted referrals
+      const refRes = await fetch("/api/reference/submit");
+      const refData = await refRes.json();
+      const referrals: { referral_id: string; candidate_name: string }[] = refData.referrals ?? [];
+
+      if (referrals.length === 0) {
+        setRescoreError("No submitted referrals found. Submit a referral first.");
+        setRescoreRunning(false);
+        return;
+      }
+
+      // 2. Fetch current best scores for each referral (before rescoring)
+      const matchRes = await fetch("/api/reference/live-matches");
+      const matchData = await matchRes.json();
+      const allMatches: { referral_id: string; match_score: number }[] = matchData.matches ?? [];
+
+      const oldBestByReferral: Record<string, number> = {};
+      for (const m of allMatches) {
+        const current = oldBestByReferral[m.referral_id];
+        if (current === undefined || m.match_score > current) {
+          oldBestByReferral[m.referral_id] = m.match_score;
+        }
+      }
+
+      // 3. Re-score each referral sequentially, updating progress
+      setRescoreProgress({ done: 0, total: referrals.length });
+      const rows: { name: string; oldBest: number | null; newBest: number; delta: number }[] = [];
+
+      for (let i = 0; i < referrals.length; i++) {
+        const r = referrals[i];
+        try {
+          const res = await fetch("/api/reference/rescore", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ referral_id: r.referral_id }),
+          });
+          const data = await res.json();
+          const newMatches: { match_score: number }[] = data.match_results ?? [];
+          const newBest = newMatches.length > 0
+            ? Math.max(...newMatches.map((m) => m.match_score))
+            : 0;
+          const oldBest = oldBestByReferral[r.referral_id] ?? null;
+          rows.push({
+            name: r.candidate_name,
+            oldBest,
+            newBest,
+            delta: oldBest !== null ? newBest - oldBest : 0,
+          });
+        } catch {
+          rows.push({ name: r.candidate_name, oldBest: null, newBest: 0, delta: 0 });
+        }
+        setRescoreProgress({ done: i + 1, total: referrals.length });
+      }
+
+      // 4. Summarise
+      const improved  = rows.filter((r) => r.delta > 0).length;
+      const decreased = rows.filter((r) => r.delta < 0).length;
+      const unchanged = rows.filter((r) => r.delta === 0).length;
+      setRescoreResults({ total: rows.length, improved, unchanged, decreased, rows });
+    } catch {
+      setRescoreError("Failed to complete bulk re-score. Please try again.");
+    } finally {
+      setRescoreRunning(false);
+    }
+  }
+
+  // ── Per-job override handlers ───────────────────────────────────
+
+  function handleJobSliderChange(jobId: string, key: keyof ScoringWeights, newValue: number) {
+    setJobDrafts((prev) => {
+      const current = prev[jobId] ?? DEFAULT_WEIGHTS;
+      const others = (Object.keys(current) as (keyof ScoringWeights)[]).filter((k) => k !== key);
+      const remaining = 100 - newValue;
+      const currentOtherTotal = others.reduce((s, k) => s + current[k], 0);
+      const next = { ...current, [key]: newValue };
+      if (currentOtherTotal === 0) {
+        const share = Math.floor(remaining / others.length);
+        others.forEach((k, i) => {
+          next[k] = i === others.length - 1 ? remaining - share * (others.length - 1) : share;
+        });
+      } else {
+        let distributed = 0;
+        others.forEach((k, i) => {
+          if (i === others.length - 1) {
+            next[k] = remaining - distributed;
+          } else {
+            const scaled = Math.round((current[k] / currentOtherTotal) * remaining);
+            next[k] = Math.max(0, scaled);
+            distributed += next[k];
+          }
+        });
+      }
+      return { ...prev, [jobId]: next };
+    });
+    setJobSaveStatus((p) => ({ ...p, [jobId]: "idle" }));
+  }
+
+  async function saveJobOverride(jobId: string) {
+    const draft = jobDrafts[jobId];
+    if (!draft) return;
+    setJobSaving(jobId);
+    setJobSaveStatus((p) => ({ ...p, [jobId]: "idle" }));
+    try {
+      const res = await fetch("/api/reference/job-weights", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_id: jobId, weights: draft }),
+      });
+      if (res.ok) {
+        setJobEntries((prev) =>
+          prev.map((j) => j.job_id === jobId ? { ...j, has_override: true, override: draft, effective_weights: draft } : j)
+        );
+        setJobSaveStatus((p) => ({ ...p, [jobId]: "success" }));
+        setTimeout(() => setJobSaveStatus((p) => ({ ...p, [jobId]: "idle" })), 3000);
+      } else {
+        setJobSaveStatus((p) => ({ ...p, [jobId]: "error" }));
+      }
+    } catch {
+      setJobSaveStatus((p) => ({ ...p, [jobId]: "error" }));
+    } finally {
+      setJobSaving(null);
+    }
+  }
+
+  async function clearJobOverride(jobId: string) {
+    setJobSaving(jobId);
+    try {
+      await fetch("/api/reference/job-weights", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_id: jobId }),
+      });
+      setJobEntries((prev) =>
+        prev.map((j) => j.job_id === jobId ? { ...j, has_override: false, override: null, effective_weights: saved } : j)
+      );
+      setJobDrafts((prev) => ({ ...prev, [jobId]: { ...saved } }));
+    } catch { /* silent */ } finally {
+      setJobSaving(null);
+    }
+  }
 
   // ── Render ─────────────────────────────────────────────────────
 
@@ -404,9 +600,6 @@ export default function ScoringConfigPage() {
                   >
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-foreground truncate">
-                        {m.match_id}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate" title={m.posting_id}>
                         {JOB_TITLE[m.posting_id] ?? m.posting_id}
                       </p>
                       <span
@@ -460,6 +653,274 @@ export default function ScoringConfigPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ── Re-score Existing Candidates ───────────────────────────── */}
+      <div className="bg-white rounded-xl border border-border shadow-sm p-6">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-brand-teal/10 flex-shrink-0">
+              <Users className="w-4 h-4 text-brand-teal" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm text-foreground">Re-score Existing Candidates</h3>
+              <p className="text-xs text-muted-foreground mt-0.5 max-w-xl">
+                Apply the current saved weights to all submitted referrals. New match records are appended — existing records are kept for history. Best used after saving new global weights.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleBulkRescore}
+            disabled={rescoreRunning || isDirty}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-teal text-white text-sm font-medium hover:bg-brand-teal/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+            title={isDirty ? "Save weights first before re-scoring" : "Re-score all submitted referrals"}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${rescoreRunning ? "animate-spin" : ""}`} />
+            {rescoreRunning ? "Re-scoring…" : "Re-score All Candidates"}
+          </button>
+        </div>
+
+        {isDirty && !rescoreRunning && (
+          <div className="mt-4 flex items-center gap-2 text-xs text-brand-gold bg-brand-gold/10 border border-brand-gold/20 rounded-lg px-3 py-2">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            You have unsaved weight changes. Save weights first, then re-score.
+          </div>
+        )}
+
+        {/* Progress bar */}
+        {rescoreRunning && rescoreProgress && (
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Re-scoring candidates…</span>
+              <span className="font-mono">{rescoreProgress.done} / {rescoreProgress.total}</span>
+            </div>
+            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-brand-teal rounded-full transition-all duration-300"
+                style={{ width: `${(rescoreProgress.done / rescoreProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {rescoreError && (
+          <div className="mt-4 flex items-center gap-2 text-xs text-destructive bg-destructive/5 border border-destructive/20 rounded-lg px-3 py-2">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            {rescoreError}
+          </div>
+        )}
+
+        {/* Results summary */}
+        {rescoreResults && !rescoreRunning && (
+          <div className="mt-4 space-y-3">
+            {/* Stat pills */}
+            <div className="flex flex-wrap gap-3">
+              <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-brand-teal" />
+                <span className="text-xs font-medium text-foreground">{rescoreResults.total} rescored</span>
+              </div>
+              {rescoreResults.improved > 0 && (
+                <div className="flex items-center gap-2 bg-brand-green/10 rounded-lg px-3 py-2">
+                  <ArrowRight className="w-3.5 h-3.5 text-brand-green rotate-[-45deg]" />
+                  <span className="text-xs font-medium text-brand-green">{rescoreResults.improved} improved</span>
+                </div>
+              )}
+              {rescoreResults.unchanged > 0 && (
+                <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2">
+                  <span className="text-xs font-medium text-muted-foreground">{rescoreResults.unchanged} unchanged</span>
+                </div>
+              )}
+              {rescoreResults.decreased > 0 && (
+                <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2">
+                  <ArrowRight className="w-3.5 h-3.5 text-destructive rotate-45" />
+                  <span className="text-xs font-medium text-destructive">{rescoreResults.decreased} decreased</span>
+                </div>
+              )}
+            </div>
+
+            {/* Per-candidate rows */}
+            <div className="rounded-lg border border-border overflow-x-auto">
+              <table className="w-full min-w-[420px] text-xs">
+                <thead>
+                  <tr className="bg-muted/50 border-b border-border">
+                    <th className="text-left font-medium text-muted-foreground px-4 py-2">Candidate</th>
+                    <th className="text-right font-medium text-muted-foreground px-4 py-2">Previous best</th>
+                    <th className="text-right font-medium text-muted-foreground px-4 py-2">New best</th>
+                    <th className="text-right font-medium text-muted-foreground px-4 py-2">Change</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {rescoreResults.rows.map((row, i) => (
+                    <tr key={i} className="bg-white hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2 font-medium text-foreground">{row.name}</td>
+                      <td className="px-4 py-2 text-right text-muted-foreground">
+                        {row.oldBest !== null ? row.oldBest : <span className="italic">—</span>}
+                      </td>
+                      <td className="px-4 py-2 text-right font-semibold text-foreground">{row.newBest}</td>
+                      <td className="px-4 py-2 text-right">
+                        {row.delta > 0 && (
+                          <span className="text-brand-green font-medium">+{row.delta}</span>
+                        )}
+                        {row.delta < 0 && (
+                          <span className="text-destructive font-medium">{row.delta}</span>
+                        )}
+                        {row.delta === 0 && row.oldBest !== null && (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                        {row.oldBest === null && (
+                          <span className="text-brand-teal font-medium">new</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Per-Job Weight Overrides ────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-border shadow-sm">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-muted-foreground" />
+            <h3 className="font-semibold text-sm text-foreground">Per-Job Weight Overrides</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Override global weights for specific roles. Only open jobs are listed.
+          </p>
+        </div>
+
+        {jobEntries.length === 0 ? (
+          <div className="px-6 py-8 text-center text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
+            Loading jobs…
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {jobEntries.map((job) => {
+              const isExpanded = expandedJob === job.job_id;
+              const draft = jobDrafts[job.job_id] ?? job.effective_weights;
+              const draftTotal = draft.skill + draft.experience + draft.location + draft.seniority;
+              const isJobDirty = job.has_override
+                ? JSON.stringify(draft) !== JSON.stringify(job.override)
+                : JSON.stringify(draft) !== JSON.stringify(saved);
+              const isSavingThis = jobSaving === job.job_id;
+              const status = jobSaveStatus[job.job_id] ?? "idle";
+
+              return (
+                <div key={job.job_id}>
+                  {/* Row header */}
+                  <button
+                    onClick={() => setExpandedJob(isExpanded ? null : job.job_id)}
+                    className="w-full flex items-center justify-between px-6 py-3.5 hover:bg-muted/30 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{job.title}</p>
+                        <p className="text-xs text-muted-foreground">{job.department}</p>
+                      </div>
+                      {job.has_override && (
+                        <span className="flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-brand-teal/10 text-brand-teal font-medium">
+                          Custom weights
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                      <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+                        {WEIGHT_META.map(({ key, trackColor, label }) => (
+                          <span key={key} className="flex items-center gap-1">
+                            <span className={`w-2 h-2 rounded-full ${trackColor} inline-block`} />
+                            {job.effective_weights[key]}%
+                          </span>
+                        ))}
+                      </div>
+                      {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                    </div>
+                  </button>
+
+                  {/* Expanded override panel */}
+                  {isExpanded && (
+                    <div className="px-6 pb-5 pt-1 bg-muted/20 border-t border-border">
+                      <div className="space-y-4 mt-3">
+                        {WEIGHT_META.map(({ key, label, color, trackColor }) => (
+                          <div key={key} className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className={`text-xs font-medium ${color}`}>{label}</span>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={draft[key]}
+                                  onChange={(e) => {
+                                    const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                    setJobDrafts((prev) => ({ ...prev, [job.job_id]: { ...draft, [key]: val } }));
+                                  }}
+                                  className="w-12 text-right text-xs font-mono border border-border rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-brand-teal"
+                                />
+                                <span className="text-xs text-muted-foreground">%</span>
+                              </div>
+                            </div>
+                            <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
+                              <div className={`absolute left-0 top-0 h-full rounded-full transition-all ${trackColor}`} style={{ width: `${draft[key]}%` }} />
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={draft[key]}
+                                onChange={(e) => handleJobSliderChange(job.job_id, key, Number(e.target.value))}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-3 mt-4">
+                        <span className={`text-xs font-mono ${draftTotal === 100 ? "text-brand-green" : "text-destructive"}`}>
+                          Total: {draftTotal}/100
+                        </span>
+                        <button
+                          onClick={() => saveJobOverride(job.job_id)}
+                          disabled={draftTotal !== 100 || isSavingThis || !isJobDirty}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-teal text-white text-xs font-medium hover:bg-brand-teal/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {isSavingThis ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                          Save Override
+                        </button>
+                        {job.has_override && (
+                          <button
+                            onClick={() => clearJobOverride(job.job_id)}
+                            disabled={isSavingThis}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                            Use Global
+                          </button>
+                        )}
+                        {status === "success" && (
+                          <span className="flex items-center gap-1 text-xs text-brand-green">
+                            <CheckCircle2 className="w-3 h-3" /> Saved
+                          </span>
+                        )}
+                        {status === "error" && (
+                          <span className="flex items-center gap-1 text-xs text-destructive">
+                            <AlertTriangle className="w-3 h-3" /> Failed
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

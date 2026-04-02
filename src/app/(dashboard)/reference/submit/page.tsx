@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { OPEN_JOBS } from "@/data/reference/jobs";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
-import { CheckCircle2, Upload, X, FileText, AlertTriangle } from "lucide-react";
+import { CheckCircle2, Upload, X, FileText, AlertTriangle, ChevronDown, ChevronUp, Loader2, Sparkles } from "lucide-react";
 
 interface FormState {
   referrerName: string;
@@ -40,8 +41,22 @@ const EMPTY_FORM: FormState = {
 
 const TALENT_POOL_VALUE = "pool";
 
+function AutoFilledBadge() {
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-brand-teal bg-brand-teal/10 rounded px-1.5 py-0.5 leading-none">
+      <Sparkles className="h-2.5 w-2.5" /> from resume
+    </span>
+  );
+}
+
 export default function SubmitReferralPage() {
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const searchParams = useSearchParams();
+  const prefilledJobId = searchParams.get("job") ?? "";
+  const validPrefilledId = OPEN_JOBS.some((j) => j.id === prefilledJobId) ? prefilledJobId : "";
+  const [form, setForm] = useState<FormState>({
+    ...EMPTY_FORM,
+    targetJobId: validPrefilledId || EMPTY_FORM.targetJobId,
+  });
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [extraFiles, setExtraFiles] = useState<File[]>([]);
   const [gdprConsent, setGdprConsent] = useState(false);
@@ -51,15 +66,93 @@ export default function SubmitReferralPage() {
   const resumeRef = useRef<HTMLInputElement>(null);
   const extraRef = useRef<HTMLInputElement>(null);
 
+  // Resume parsing state
+  const [parsing, setParsing] = useState(false);
+  const [parseResult, setParseResult] = useState<{
+    text: string; format: string; charCount: number; wordCount: number;
+    pageCount: number | null; warning: string | null;
+  } | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  // Tracks which fields were auto-filled from the resume so we can highlight them
+  const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set());
+
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    // Once user edits a field manually, remove the auto-fill highlight
+    setAutoFilledFields((prev) => {
+      if (!prev.has(name)) return prev;
+      const next = new Set(prev);
+      next.delete(name);
+      return next;
+    });
   }
 
-  function handleResumeChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleResumeChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     setResumeFile(file);
+    setParseResult(null);
+    setParseError(null);
+    setPreviewOpen(false);
+    setAutoFilledFields(new Set());
+
+    if (!file) return;
+
+    setParsing(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/reference/resume-parse", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        setParseError(data.error ?? "Could not parse file.");
+      } else {
+        setParseResult(data);
+        if (data.text) setPreviewOpen(false);
+
+        // Auto-fill form fields from AI extraction — only fill empty fields
+        const ext = data.extracted ?? {};
+        const filled = new Set<string>();
+
+        setForm((prev) => {
+          const next = { ...prev };
+          if (ext.name && !prev.candidateName.trim()) {
+            next.candidateName = ext.name; filled.add("candidateName");
+          }
+          if (ext.email && !prev.candidateEmail.trim()) {
+            next.candidateEmail = ext.email; filled.add("candidateEmail");
+          }
+          if (ext.phone && !prev.candidatePhone.trim()) {
+            next.candidatePhone = ext.phone; filled.add("candidatePhone");
+          }
+          if (ext.current_employer && !prev.currentEmployer.trim()) {
+            next.currentEmployer = ext.current_employer; filled.add("currentEmployer");
+          }
+          if (ext.years_experience != null && !prev.yearsExperience.trim()) {
+            next.yearsExperience = String(ext.years_experience); filled.add("yearsExperience");
+          }
+          if (ext.location && !prev.location.trim()) {
+            next.location = ext.location; filled.add("location");
+          }
+          if (ext.linkedin_url && !prev.linkedinUrl.trim()) {
+            next.linkedinUrl = ext.linkedin_url; filled.add("linkedinUrl");
+          }
+          if (ext.skills?.length && !prev.skills.trim()) {
+            next.skills = ext.skills.join(", "); filled.add("skills");
+          }
+          return next;
+        });
+
+        setAutoFilledFields(filled);
+      }
+    } catch {
+      setParseError("Network error during file parsing. You can still submit — the filename will be recorded.");
+    } finally {
+      setParsing(false);
+    }
   }
 
   function handleExtraChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -97,6 +190,9 @@ export default function SubmitReferralPage() {
           targetJobId: form.targetJobId,
           referrerNote: form.referrerNote,
           resumeFilename: resumeFile?.name ?? null,
+          resumeText: parseResult?.text ?? null,
+          resumeFormat: parseResult?.format ?? null,
+          resumeWordCount: parseResult?.wordCount ?? null,
           extraFilenames: extraFiles.map((f) => f.name),
         }),
       });
@@ -116,6 +212,15 @@ export default function SubmitReferralPage() {
 
   const isPool = form.targetJobId === TALENT_POOL_VALUE;
   const selectedJob = OPEN_JOBS.find((j) => j.id === form.targetJobId);
+
+  // Returns extra classes for inputs that were auto-filled
+  function inputClass(fieldName: string, extra = "") {
+    const base = "w-full rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30";
+    const filled = autoFilledFields.has(fieldName)
+      ? "bg-brand-teal/5 border border-brand-teal/30"
+      : "bg-muted";
+    return `${base} ${filled} ${extra}`.trim();
+  }
 
   const duplicateCandidate = useMemo(() => {
     const email = form.candidateEmail.trim().toLowerCase();
@@ -210,11 +315,20 @@ export default function SubmitReferralPage() {
 
         {/* Candidate info */}
         <div className="bg-white rounded-xl border border-border shadow-sm p-5">
-          <h3 className="font-semibold text-sm text-foreground mb-4">Candidate Information</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm text-foreground">Candidate Information</h3>
+            {autoFilledFields.size > 0 && (
+              <span className="flex items-center gap-1.5 text-xs text-brand-teal bg-brand-teal/8 border border-brand-teal/20 rounded-full px-2.5 py-1">
+                <Sparkles className="h-3 w-3" />
+                {autoFilledFields.size} field{autoFilledFields.size !== 1 ? "s" : ""} auto-filled from resume
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
                 Candidate Name <span className="text-red-400">*</span>
+                {autoFilledFields.has("candidateName") && <AutoFilledBadge />}
               </label>
               <input
                 name="candidateName"
@@ -222,12 +336,13 @@ export default function SubmitReferralPage() {
                 onChange={handleChange}
                 required
                 placeholder="e.g. Alex Rivera"
-                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+                className={inputClass("candidateName")}
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
                 Email <span className="text-red-400">*</span>
+                {autoFilledFields.has("candidateEmail") && <AutoFilledBadge />}
               </label>
               <input
                 name="candidateEmail"
@@ -236,7 +351,7 @@ export default function SubmitReferralPage() {
                 onChange={handleChange}
                 required
                 placeholder="candidate@example.com"
-                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+                className={inputClass("candidateEmail")}
               />
             </div>
             {duplicateCandidate && (
@@ -253,30 +368,32 @@ export default function SubmitReferralPage() {
               </div>
             )}
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">Phone</label>
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                Phone {autoFilledFields.has("candidatePhone") && <AutoFilledBadge />}
+              </label>
               <input
                 name="candidatePhone"
                 value={form.candidatePhone}
                 onChange={handleChange}
                 placeholder="+1-604-555-0100"
-                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+                className={inputClass("candidatePhone")}
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-                Current Employer
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                Current Employer {autoFilledFields.has("currentEmployer") && <AutoFilledBadge />}
               </label>
               <input
                 name="currentEmployer"
                 value={form.currentEmployer}
                 onChange={handleChange}
                 placeholder="e.g. Accenture"
-                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+                className={inputClass("currentEmployer")}
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-                Years of Experience
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                Years of Experience {autoFilledFields.has("yearsExperience") && <AutoFilledBadge />}
               </label>
               <input
                 name="yearsExperience"
@@ -286,17 +403,19 @@ export default function SubmitReferralPage() {
                 value={form.yearsExperience}
                 onChange={handleChange}
                 placeholder="e.g. 7"
-                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+                className={inputClass("yearsExperience")}
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">Location</label>
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                Location {autoFilledFields.has("location") && <AutoFilledBadge />}
+              </label>
               <input
                 name="location"
                 value={form.location}
                 onChange={handleChange}
                 placeholder="e.g. Vancouver, BC"
-                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+                className={inputClass("location")}
               />
             </div>
             <div>
@@ -317,22 +436,23 @@ export default function SubmitReferralPage() {
               </select>
             </div>
             <div className="sm:col-span-2">
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
                 Key Skills
-                <span className="ml-1 font-normal">(comma-separated — used for AI match scoring)</span>
+                <span className="font-normal">(comma-separated — used for AI match scoring)</span>
+                {autoFilledFields.has("skills") && <AutoFilledBadge />}
               </label>
               <input
                 name="skills"
                 value={form.skills}
                 onChange={handleChange}
                 placeholder="e.g. Python, SQL, Leadership, Machine Learning"
-                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+                className={inputClass("skills")}
               />
             </div>
 
             <div className="sm:col-span-2">
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-                LinkedIn URL
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                LinkedIn URL {autoFilledFields.has("linkedinUrl") && <AutoFilledBadge />}
               </label>
               <input
                 name="linkedinUrl"
@@ -340,7 +460,7 @@ export default function SubmitReferralPage() {
                 value={form.linkedinUrl}
                 onChange={handleChange}
                 placeholder="https://linkedin.com/in/..."
-                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+                className={inputClass("linkedinUrl")}
               />
             </div>
           </div>
@@ -351,41 +471,118 @@ export default function SubmitReferralPage() {
           <h3 className="font-semibold text-sm text-foreground mb-4">Documents</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Resume upload */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1.5">
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-muted-foreground block mb-1">
                 Resume / CV
               </label>
+              {/* Accepted formats */}
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {[
+                  { ext: "PDF",  note: "best quality" },
+                  { ext: "DOCX", note: "Word 2007+" },
+                  { ext: "DOC",  note: "legacy Word" },
+                  { ext: "TXT",  note: "plain text" },
+                ].map(({ ext, note }) => (
+                  <span key={ext} className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                    {ext} <span className="opacity-60">· {note}</span>
+                  </span>
+                ))}
+                <span className="text-[10px] text-muted-foreground self-center">· Max 5 MB</span>
+              </div>
+
               <input
                 ref={resumeRef}
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,.doc,.docx,.txt,.text"
                 onChange={handleResumeChange}
                 className="hidden"
               />
-              {resumeFile ? (
-                <div className="flex items-center gap-2 bg-brand-teal/5 border border-brand-teal/20 rounded-lg px-3 py-2">
-                  <FileText className="h-4 w-4 text-brand-teal flex-shrink-0" />
-                  <span className="text-xs text-foreground truncate flex-1">{resumeFile.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setResumeFile(null);
-                      if (resumeRef.current) resumeRef.current.value = "";
-                    }}
-                    className="text-muted-foreground hover:text-foreground flex-shrink-0"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
+
+              {!resumeFile ? (
                 <button
                   type="button"
                   onClick={() => resumeRef.current?.click()}
-                  className="w-full flex items-center gap-2 bg-muted border border-dashed border-border rounded-lg px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-brand-teal/40 hover:bg-brand-teal/5 transition-colors"
+                  className="w-full flex items-center gap-2 bg-muted border border-dashed border-border rounded-lg px-3 py-3 text-sm text-muted-foreground hover:text-foreground hover:border-brand-teal/40 hover:bg-brand-teal/5 transition-colors"
                 >
                   <Upload className="h-4 w-4" />
-                  Upload PDF, DOC, DOCX
+                  Click to upload — PDF, DOCX, DOC, or TXT
                 </button>
+              ) : (
+                <div className="space-y-2">
+                  {/* File pill */}
+                  <div className="flex items-center gap-2 bg-brand-teal/5 border border-brand-teal/20 rounded-lg px-3 py-2">
+                    <FileText className="h-4 w-4 text-brand-teal flex-shrink-0" />
+                    <span className="text-xs text-foreground truncate flex-1">{resumeFile.name}</span>
+                    <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                      {(resumeFile.size / 1024).toFixed(0)} KB
+                    </span>
+                    {parsing && <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-teal flex-shrink-0" />}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResumeFile(null);
+                        setParseResult(null);
+                        setParseError(null);
+                        setPreviewOpen(false);
+                        if (resumeRef.current) resumeRef.current.value = "";
+                      }}
+                      className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Parse status */}
+                  {parsing && (
+                    <p className="text-xs text-muted-foreground px-1 flex items-center gap-1.5">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Extracting text and reading candidate details…
+                    </p>
+                  )}
+
+                  {parseError && (
+                    <div className="flex items-start gap-2 bg-brand-gold/5 border border-brand-gold/20 rounded-lg px-3 py-2 text-xs text-brand-gold">
+                      <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                      {parseError}
+                    </div>
+                  )}
+
+                  {parseResult && (
+                    <div className="rounded-lg border border-border overflow-hidden">
+                      {/* Stats bar */}
+                      <div className="flex items-center gap-3 px-3 py-2 bg-muted/50 text-xs text-muted-foreground">
+                        <span className="uppercase font-semibold text-[10px] tracking-wide text-brand-teal">
+                          {parseResult.format}
+                        </span>
+                        <span>{parseResult.wordCount.toLocaleString()} words</span>
+                        <span>{parseResult.charCount.toLocaleString()} chars</span>
+                        {parseResult.pageCount != null && <span>{parseResult.pageCount} page{parseResult.pageCount !== 1 ? "s" : ""}</span>}
+                        {parseResult.warning && (
+                          <span className="text-brand-gold flex items-center gap-1 ml-auto">
+                            <AlertTriangle className="h-3 w-3" /> {parseResult.warning}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setPreviewOpen((o) => !o)}
+                          className="ml-auto flex items-center gap-1 text-brand-teal hover:underline"
+                        >
+                          {previewOpen ? "Hide" : "Show"} extracted text
+                          {previewOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        </button>
+                      </div>
+
+                      {/* Extracted text preview */}
+                      {previewOpen && (
+                        <div className="max-h-48 overflow-y-auto bg-white px-3 py-2">
+                          <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
+                            {parseResult.text || "(No text extracted)"}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -438,6 +635,12 @@ export default function SubmitReferralPage() {
         {/* Job selection */}
         <div className="bg-white rounded-xl border border-border shadow-sm p-5">
           <h3 className="font-semibold text-sm text-foreground mb-4">Position</h3>
+          {validPrefilledId && (
+            <div className="mb-3 flex items-center gap-2 text-xs bg-brand-teal/5 border border-brand-teal/20 rounded-lg px-3 py-2 text-brand-teal">
+              <span className="font-medium">Pre-filled from job listing.</span>
+              <span className="text-muted-foreground">You can change the role below if needed.</span>
+            </div>
+          )}
           <div>
             <label className="text-xs font-medium text-muted-foreground block mb-1.5">
               Referring for

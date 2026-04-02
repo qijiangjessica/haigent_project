@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  getReferrals, getScoringWeights, type LiveMatchRecord,
+  getReferrals, getScoringWeights, getEffectiveWeights, type LiveMatchRecord,
   addReferral, addLiveMatchRecord, addLivePoolEntry,
   setDecision, rejectReferral, addLiveAuditEvent,
-  setStatusOverride, setScoringWeights,
+  setStatusOverride, setScoringWeights, setJobWeightOverride,
 } from "@/lib/reference-store";
 import { addReferralAndPersist, addMatchesAndPersist, loadFromDisk } from "@/lib/reference-json-persistence";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
@@ -35,12 +35,14 @@ function computeStaticMatchScores(
 ): LiveMatchRecord[] {
   if (jobs.length === 0) return [];
 
-  const weights = getScoringWeights();
   const today = new Date().toISOString().slice(0, 10);
   const candSkillsLower = candidate.skills.map((s) => s.toLowerCase().trim());
   const yoe = candidate.years_experience;
 
   return jobs.map((job, i) => {
+    // Use per-job override if set, otherwise fall back to global weights
+    const weights = getEffectiveWeights(job.id);
+
     // 1. Skill overlap — ratio of required skills the candidate has claimed
     const reqSkillsLower = job.requiredSkills.map((s) => s.toLowerCase().trim());
     const matched = reqSkillsLower.filter((rs) =>
@@ -129,7 +131,6 @@ async function computeAIMatchScores(
   if (jobs.length === 0) return [];
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const weights = getScoringWeights();
   const today = new Date().toISOString().slice(0, 10);
 
   const jobsText = jobs
@@ -183,6 +184,7 @@ Respond ONLY with a valid JSON array, no other text:
   }>;
 
   return scores.map((s, i) => {
+    const weights = getEffectiveWeights(s.posting_id);
     const match_score = Math.round(
       (s.skill_overlap_score * weights.skill +
         s.experience_score * weights.experience +
@@ -221,7 +223,7 @@ export async function POST(request: NextRequest) {
       candidateName, candidateEmail, candidatePhone,
       currentEmployer, yearsExperience, location, availability,
       skills, linkedinUrl, targetJobId, referrerNote,
-      resumeFilename, extraFilenames,
+      resumeFilename, resumeText, resumeFormat, resumeWordCount, extraFilenames,
     } = body;
 
     if (!referrerName || !candidateName || !candidateEmail || !referrerNote) {
@@ -263,6 +265,9 @@ export async function POST(request: NextRequest) {
       target_job_id: targetJobId ?? "pool",
       referrer_note: referrerNote,
       resume_filename: resumeFilename ?? null,
+      resume_text: resumeText ?? null,
+      resume_format: resumeFormat ?? null,
+      resume_word_count: resumeWordCount ?? null,
       extra_filenames: extraFilenames ?? [],
       is_duplicate: !!duplicate,
       duplicate_candidate_id: duplicateSeeded?.candidate_id ?? null,
@@ -332,6 +337,7 @@ export async function GET() {
       for (const e of snap.auditEvents)   addLiveAuditEvent(e);
       for (const [k, v] of Object.entries(snap.statusOverrides)) setStatusOverride(k, v);
       setScoringWeights(snap.scoringWeights);
+      for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
     } catch { /* no disk data yet */ }
   }
   return NextResponse.json({ referrals: getReferrals() });

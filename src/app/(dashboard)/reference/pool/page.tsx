@@ -8,7 +8,7 @@ import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
 import { MATCH_RECORDS } from "@/data/reference/matches";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
-import { Search, Download, Sparkles, Loader2, ChevronDown, ChevronUp, AlertCircle, TrendingUp, Package, XCircle, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Search, Download, Sparkles, Loader2, ChevronDown, ChevronUp, AlertCircle, TrendingUp, Package, XCircle, CheckCircle2, AlertTriangle, Filter, Users } from "lucide-react";
 import { toCsv, downloadCsv } from "@/lib/csv";
 
 interface LivePoolEntry {
@@ -62,6 +62,7 @@ interface LiveMatchRecord {
   seniority_score: number;
   classification: "Strong Match" | "Partial Match" | "No Match";
   evaluated_date: string;
+  scoring_method?: "ai" | "static";
 }
 
 const HOLD_STATUS_COLORS: Record<string, string> = {
@@ -354,10 +355,42 @@ export default function TalentPoolPage() {
         </div>
 
         {filteredPool.length === 0 ? (
-          <div className="bg-white rounded-xl border border-border shadow-sm p-8 text-center">
-            <p className="text-muted-foreground text-sm">
-              {TALENT_POOL.length === 0 ? "No candidates in the talent pool yet." : "No pool candidates match your filters."}
-            </p>
+          <div className="bg-white rounded-xl border border-border shadow-sm p-10 flex flex-col items-center text-center gap-3">
+            {TALENT_POOL.length > 0 || (search || statusFilter !== "all") ? (
+              <>
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                  <Filter className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground text-sm">No pool candidates match your filters</p>
+                  <p className="text-xs text-muted-foreground mt-1">Try clearing the search or broadening the status filter.</p>
+                </div>
+                <button
+                  onClick={() => { setSearch(""); setStatusFilter("all"); }}
+                  className="text-xs text-brand-teal font-medium hover:underline"
+                >
+                  Clear all filters
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-12 h-12 rounded-full bg-brand-teal/10 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-brand-teal" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground text-sm">Your talent pool is empty</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Candidates are added here when you promote a referral to the pool, or when a referral is submitted for the general talent pool.
+                  </p>
+                </div>
+                <Link
+                  href="/reference/submit"
+                  className="text-xs px-4 py-2 rounded-lg bg-brand-teal text-white font-medium hover:bg-brand-teal/90 transition-colors"
+                >
+                  Submit a Referral
+                </Link>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid gap-4">
@@ -874,7 +907,13 @@ export default function TalentPoolPage() {
               .filter((r) => !livePoolEntries.some((e) => e.referral_id === r.referral_id))
               .map((referral) => {
               const matches = liveMatches.filter((m) => m.referral_id === referral.referral_id);
-              const sortedMatches = [...matches].sort((a, b) => b.match_score - a.match_score);
+              // Deduplicate: keep the latest match per posting_id (handles re-score runs)
+              const latestByJob = matches.reduce<Record<string, LiveMatchRecord>>((acc, m) => {
+                const existing = acc[m.posting_id];
+                if (!existing || m.evaluated_date >= existing.evaluated_date) acc[m.posting_id] = m;
+                return acc;
+              }, {});
+              const sortedMatches = Object.values(latestByJob).sort((a, b) => b.match_score - a.match_score);
               const bestMatch = sortedMatches[0] ?? null;
               const scoreExpanded = expandedScores.has(`ref-${referral.referral_id}`);
               const isPromoted = !!promotedMap[referral.referral_id];

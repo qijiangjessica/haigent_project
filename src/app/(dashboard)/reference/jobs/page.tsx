@@ -1,6 +1,9 @@
+"use client";
+
 import { PageHeader } from "@/components/shared/page-header";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
 import { MATCH_RECORDS } from "@/data/reference/matches";
+import { useRouter } from "next/navigation";
 
 const STATUS_COLORS: Record<string, string> = {
   OPEN: "bg-brand-green/10 text-brand-green",
@@ -9,6 +12,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function JobsPage() {
+  const router = useRouter();
   return (
     <div className="space-y-6">
       <PageHeader
@@ -17,6 +21,7 @@ export default function JobsPage() {
         actionLabel="Submit Referral"
         actionHref="/reference/submit"
       />
+
 
       <div className="grid gap-4">
         {REFERENCE_JOBS.map((job) => {
@@ -88,12 +93,18 @@ export default function JobsPage() {
                 <p className="text-xs text-muted-foreground">
                   Posted {job.createdAt}
                 </p>
-                <a
-                  href="/reference/submit"
-                  className="text-xs text-brand-teal font-medium hover:underline"
-                >
-                  Refer a candidate →
-                </a>
+                {job.status === "OPEN" ? (
+                  <button
+                    onClick={() => router.push(`/reference/submit?job=${job.id}`)}
+                    className="text-xs text-brand-teal font-medium hover:underline"
+                  >
+                    Refer a candidate →
+                  </button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    Not accepting referrals
+                  </span>
+                )}
               </div>
             </div>
           );
