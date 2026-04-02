@@ -1,227 +1,110 @@
-# Hardcoded Data
-
-All data is stored as TypeScript constants. No database is needed. This file documents the exact data observed on the production app that should be replicated.
+# Data & Storage
 
 ---
 
-## Schedule Module Data
+## Schedule Module — Static Data (`src/data/schedule/`)
 
 ### Jobs
-
-```typescript
-// src/data/schedule/jobs.ts
-export const JOBS = [
-  {
-    id: "job-1",
-    title: "Director AI",
-    department: "Technology",
-    location: "Vancouver",
-    status: "active",
-    scoredCount: 2,
-    scheduledCount: 0,
-    createdAt: "2026-02-06",
-    scoreThreshold: 75,
-    autoScore: true,
-    autoSchedule: true,
-    description: "Leading AI initiatives and strategy...",
-  },
-  {
-    id: "job-2",
-    title: "Account Manager",
-    department: "Sales",
-    location: "Vancouver, BC",
-    status: "active",
-    scoredCount: 3,
-    scheduledCount: 0,
-    createdAt: "2026-02-05",
-    scoreThreshold: 70,
-    autoScore: true,
-    autoSchedule: false,
-    description: "Managing client accounts and relationships...",
-  },
-];
-```
+Two active jobs: "Director AI" (Technology, Vancouver) and "Account Manager" (Sales, Vancouver, BC). Both have `autoScore: true`, threshold 70–75.
 
 ### Candidates
-
-```typescript
-// src/data/schedule/candidates.ts
-export const CANDIDATES = [
-  {
-    id: "cand-1",
-    name: "Wasantha",
-    email: "wasantha@example.com",
-    jobId: "job-1",
-    jobTitle: "Director AI",
-    aiScore: 67,
-    status: "scored",
-    appliedAt: "2026-02-06",
-  },
-  {
-    id: "cand-2",
-    name: "Sarah Chen",
-    email: "sarah.chen@example.com",
-    jobId: "job-2",
-    jobTitle: "Account Manager",
-    aiScore: 55,
-    status: "applied",
-    appliedAt: "2026-02-05",
-  },
-  {
-    id: "cand-3",
-    name: "Michael Torres",
-    email: "m.torres@example.com",
-    jobId: "job-2",
-    jobTitle: "Account Manager",
-    aiScore: 58,
-    status: "scored",
-    appliedAt: "2026-02-05",
-  },
-];
-```
+Three candidates across the two jobs with AI scores of 55–67.
 
 ### Interviewers
-
-```typescript
-// src/data/schedule/interviewers.ts
-export const INTERVIEWERS = [
-  {
-    id: "int-1",
-    name: "Alex Johnson",
-    email: "alex.j@haigent.ai",
-    title: "Full-Stack Developer",
-    department: "Information Technology",
-    calConnected: true,
-    isActive: true,
-    timezone: "America/New_York",
-    maxInterviewsPerDay: 4,
-  },
-  {
-    id: "int-2",
-    name: "Priya Sharma",
-    email: "priya.s@haigent.ai",
-    title: "Engineering Manager",
-    department: "Engineering",
-    calConnected: true,
-    isActive: true,
-    timezone: "America/Vancouver",
-    maxInterviewsPerDay: 3,
-  },
-  {
-    id: "int-3",
-    name: "David Kim",
-    email: "david.k@haigent.ai",
-    title: "Senior Designer",
-    department: "Design",
-    calConnected: false,
-    isActive: true,
-    timezone: "America/New_York",
-    maxInterviewsPerDay: 4,
-  },
-  {
-    id: "int-4",
-    name: "Rachel Green",
-    email: "rachel.g@haigent.ai",
-    title: "HR Director",
-    department: "Human Resources",
-    calConnected: false,
-    isActive: true,
-    timezone: "America/Chicago",
-    maxInterviewsPerDay: 5,
-  },
-];
-```
-
-### Dashboard Stats (Derived)
-
-These are computed from the arrays above:
-- **Active Jobs:** `JOBS.filter(j => j.status === "active").length` → **2**
-- **Total Candidates:** `CANDIDATES.length` → **3**
-- **Scheduled Interviews:** `0` (no interviews in demo)
-- **Avg. AI Score:** `Math.round(CANDIDATES.reduce(...) / CANDIDATES.length)` → **60%**
+Four interviewers with Cal.com connected status, timezones, and max interviews/day settings.
 
 ---
 
-## Sourcing Module Data
+## Sourcing Module — Static Data (`src/data/sourcing/`)
 
 ### Roles
-
-```typescript
-// src/data/sourcing/roles.ts
-export const SOURCING_ROLES = [
-  {
-    id: "ROL-PeY7KEhPOZ",
-    title: "Delivery Manager",
-    department: "Data Science",
-    location: "Vancouver",
-    status: "active",
-    companyName: "TMobile",
-    experienceRequired: "7-10 years",
-    salaryRange: "225k-275k",
-    skills: ["python", "sql", "genai", "leadership"],
-    sourcedCount: 0,
-    qualifiedCount: 0,
-    contactedCount: 0,
-    meetingsCount: 0,
-    qualificationRate: 0,
-    responseRate: 0,
-    createdAt: "2026-01-20",
-    description: "Leading delivery management for data science projects...",
-  },
-  {
-    id: "ROL-N_TspQJnOE",
-    title: "Account Manager",
-    department: "Sales",
-    location: "Vancouver",
-    status: "active",
-    companyName: "TMobile",
-    experienceRequired: "5-7 years",
-    salaryRange: "150k-200k",
-    skills: ["sales", "crm", "account-management", "communication"],
-    sourcedCount: 0,
-    qualifiedCount: 0,
-    contactedCount: 0,
-    meetingsCount: 0,
-    qualificationRate: 0,
-    responseRate: 0,
-    createdAt: "2026-01-22",
-    description: "Managing key client accounts in the sales division...",
-  },
-];
-```
-
-### Dashboard Stats (Derived)
-
-- **Active Roles:** `SOURCING_ROLES.filter(r => r.status === "active").length` → **2**
-- **Total Candidates:** `0`
-- **Response Rate:** `0%`
-- **Meetings Scheduled:** `0`
+Two active roles: "Delivery Manager" (Data Science) and "Account Manager" (Sales), both for TMobile, Vancouver.
 
 ---
 
-## Settings Data (Schedule)
+## Engee Module — Live + In-Memory Data (`src/lib/engee-store.ts`)
 
+### Survey Store
+
+Surveys are stored in an in-memory `Map<string, SurveyRecord>` keyed by `employee_name.toLowerCase()`. This resets on server restart and is designed to be swapped to a database without changing callers.
+
+**SurveyRecord fields:**
 ```typescript
-// src/data/schedule/settings.ts
-export const DEFAULT_SETTINGS = {
-  companyName: "Haigent Demo",
-  companyWebsite: "",
-  careersEmail: "",
-  timezone: "America/Vancouver",
-  defaultInterviewDuration: "30 minutes",
-  autoScoreCandidates: true,
-  defaultScoreThreshold: 70,
-  emailNotifications: true,
-  emailFooter: "Thank you for your interest in joining our team.",
-  primaryBrandColor: "#E91E8C",
-};
+{
+  id: string;                      // "survey_[timestamp]_[random]"
+  employee_name: string;
+  role: string;
+  department: string;
+  city: string;
+  country: string;
+  professional_interests: string[];
+  learning_interests: string[];
+  personal_interests: string[];
+  work_style: string[];
+  communication_style: string[];
+  motivations: string[];
+  personality_traits: string[];
+  career_stage: string;
+  peak_productivity: string;
+  food_preferences: string[];
+  weekend_style: string[];
+  conversation_topics: string[];
+  life_situation: string[];
+  goals_90_days: string;
+  questions_for_mentor: string;
+  preferred_platform: "teams" | "slack";
+  preferred_meeting_time: "morning" | "afternoon" | "flexible";
+  submitted_at: string;            // ISO timestamp
+}
 ```
+
+### Mentor Roster (10 mentors)
+
+| Name | Title | Department | Slack ID | Teams ID (email) |
+|---|---|---|---|---|
+| Alex Chen | Senior Software Engineer | Engineering | U_ALEX | — |
+| Jordan Lee | Data Science Lead | Data & Analytics | U_JORDAN | — |
+| Sam Rivera | Senior Product Manager | Product | U_SAM | — |
+| Taylor Kim | Marketing Director | Marketing | U_TAYLOR | — |
+| Morgan Patel | People Operations Lead | HR | U_MORGAN | — |
+| Casey Nguyen | DevOps Engineer | Engineering | U_CASEY | — |
+| Riley Thompson | UX Lead | Design | U_RILEY | — |
+| Zilai Feng | Data Scientist | Data & Analytics | U_ZILAI | Zilai@procogia.com |
+| Gabriel Brock | Senior Consultant | Engineering | U_GABRIEL | gabriel.brock@procogia.com |
+| Ahsaan Rizvi | Senior Data Sci Consultant III | Data & Analytics | U0ADJ36JJ2K | ahsaan.rizvi@procogia.com |
+
+### Mentor Matching Algorithm
+
+Scoring (highest weight first):
+- Department exact match: **+20 pts**
+- Department partial match: **+8 pts**
+- Professional interest keyword match: **+4 pts** each
+- Learning interest match: **+2 pts** each
+- Personal interest match: **+2 pts** each
+- Bio keyword match: case-insensitive substring
+
+Returns top 3 mentors sorted by score descending.
 
 ---
 
-## Notes for Contributors
+## Onboarding & Benefits — ServiceNow
 
-- All data files export typed arrays or objects
-- Data is **read-only** — forms in the UI should show toast messages or use local React state
-- When adding a new module, create a new directory under `src/data/<module-slug>/` with the module's hardcoded data
-- Keep data realistic but minimal — enough to demonstrate the UI, not to simulate a production database
+Data is fetched live from ServiceNow tables:
+- **Onboarding:** `x_1926120_employee_onboarding` — fields: employee_name, department, position, start_date, onboarding_status, equipment_requested, it_account_created, workspace_assigned, orientation_completed, documents_completed, employee_training
+- **Benefits:** `x_haigent_benefits_type` and `x_haigent_benefits_enrollment` tables
+
+---
+
+## Payroll — Salesforce Agentforce
+
+No local data. Conversations are proxied to a Salesforce Agentforce agent via session-based REST API calls (`/einstein/ai-agent/v1/`).
+
+---
+
+## Calendar — workIQ Mock Slots
+
+When Microsoft Graph credentials are absent, `src/lib/calendar.ts` generates realistic mock slots:
+- Skips weekends
+- Respects `time_preference` ("morning" → 9/10/11 AM, "afternoon" → 1/2/3 PM, "flexible" → both)
+- Returns 3 slots across the next 3 business days
+- Confidence: 95%, reason: "Both attendees are available (suggested)"

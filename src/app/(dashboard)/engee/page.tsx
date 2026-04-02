@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { EngeeChat } from "@/components/engee/agent-chat";
 import { SurveyForm } from "@/components/engee/survey-form";
-import { PageHeader } from "@/components/shared/page-header";
+import { HeroBanner } from "@/components/shared/hero-banner";
 import { ClipboardList, MessageCircle } from "lucide-react";
 
 type Tab = "survey" | "chat";
@@ -22,9 +22,12 @@ export default function EngeePage() {
 
   return (
     <div className="space-y-6 p-6">
-      <PageHeader
+      <HeroBanner
         title="Engee"
-        description="New employee engagement agent — supports new hires through their first 90 days with interest surveys, mentor matching, and milestone check-ins."
+        subtitle="New employee engagement agent — supports new hires through their first 90 days with interest surveys, mentor matching, and milestone check-ins."
+        bgColor="bg-gradient-to-r from-brand-lime to-brand-lime/80"
+        badgeColor="bg-brand-charcoal/80"
+        badgeText="AI-Powered"
       />
 
       {/* Tabs */}

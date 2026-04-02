@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Loader2, RotateCcw } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface MessageParam {
   role: "user" | "assistant";
@@ -140,7 +141,27 @@ export function BenefitsChat() {
                   : "bg-muted text-foreground rounded-bl-md"
               }`}
             >
-              <p className="whitespace-pre-wrap">{msg.text}</p>
+              {msg.role === "user" ? (
+                <p className="whitespace-pre-wrap">{msg.text}</p>
+              ) : (
+                <ReactMarkdown
+                  components={{
+                    p:          ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                    strong:     ({ children }) => <strong className="font-semibold">{children}</strong>,
+                    ul:         ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
+                    ol:         ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
+                    li:         ({ children }) => <li>{children}</li>,
+                    code:       ({ children }) => <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">{children}</code>,
+                    pre:        ({ children }) => <pre className="bg-black/10 rounded p-2 overflow-x-auto text-xs font-mono mb-2">{children}</pre>,
+                    blockquote: ({ children }) => <blockquote className="border-l-2 border-current pl-3 opacity-70 mb-2">{children}</blockquote>,
+                    h1:         ({ children }) => <p className="font-semibold mb-1">{children}</p>,
+                    h2:         ({ children }) => <p className="font-semibold mb-1">{children}</p>,
+                    h3:         ({ children }) => <p className="font-medium mb-1">{children}</p>,
+                  }}
+                >
+                  {msg.text}
+                </ReactMarkdown>
+              )}
             </div>
             {msg.role === "user" && (
               <div className="w-7 h-7 rounded-lg bg-brand-charcoal/10 flex items-center justify-center flex-shrink-0 mt-0.5">

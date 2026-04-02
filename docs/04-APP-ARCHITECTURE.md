@@ -7,155 +7,148 @@ app/
 ├── layout.tsx                    # Root layout (fonts, body, providers)
 ├── page.tsx                      # Redirects to /schedule
 │
-└── (dashboard)/                  # Dashboard route group (sidebar layout)
-    ├── layout.tsx                # Sidebar + header + main content area
-    │
-    ├── schedule/                 # Schedule AI Agent module
-    │   ├── page.tsx              # Dashboard
-    │   ├── jobs/
-    │   │   ├── page.tsx          # Jobs list
-    │   │   └── [id]/page.tsx     # Job detail
-    │   ├── candidates/page.tsx
-    │   ├── interviews/page.tsx
-    │   ├── interviewers/page.tsx
-    │   └── settings/page.tsx
-    │
-    ├── sourcing/                 # Sourcing AI Agent module
-    │   ├── page.tsx              # Dashboard
-    │   ├── roles/
-    │   │   ├── page.tsx          # Roles list
-    │   │   └── [id]/page.tsx     # Role detail
-    │   ├── candidates/page.tsx
-    │   ├── outreach/page.tsx
-    │   └── meetings/page.tsx
-    │
-    ├── reference/page.tsx        # Placeholder — "Coming Soon"
-    ├── onboarding/page.tsx       # Placeholder — "Coming Soon"
-    ├── benefits/page.tsx         # Placeholder — "Coming Soon"
-    ├── payroll/page.tsx          # Placeholder — "Coming Soon"
-    └── engee/page.tsx            # Placeholder — "Coming Soon"
+├── (dashboard)/                  # Dashboard route group (sidebar layout)
+│   ├── layout.tsx                # Sidebar + header + main content area
+│   │
+│   ├── schedule/                 # Schedule AI Agent module
+│   │   ├── page.tsx
+│   │   ├── jobs/page.tsx
+│   │   ├── jobs/[id]/page.tsx
+│   │   ├── candidates/page.tsx
+│   │   ├── interviews/page.tsx
+│   │   ├── interviewers/page.tsx
+│   │   └── settings/page.tsx
+│   │
+│   ├── sourcing/                 # Sourcing AI Agent module
+│   │   ├── page.tsx
+│   │   ├── roles/page.tsx
+│   │   ├── roles/[id]/page.tsx
+│   │   ├── candidates/page.tsx
+│   │   ├── outreach/page.tsx
+│   │   └── meetings/page.tsx
+│   │
+│   ├── reference/page.tsx        # Coming Soon
+│   ├── onboarding/page.tsx       # Built — ServiceNow AI Assistant
+│   ├── benefits/page.tsx         # Built — ServiceNow AI Assistant + dashboard
+│   ├── payroll/page.tsx          # Built — Salesforce Agentforce AI Assistant
+│   └── engee/page.tsx            # Built — Employee Engagement Agent
+│
+└── api/                          # Backend API routes
+    ├── engee/
+    │   ├── chat/route.ts         # Main Engee agent (Claude + 9 tools)
+    │   ├── survey/route.ts       # GET/POST survey CRUD
+    │   └── mentor-suggest/route.ts  # Mentor matching endpoint
+    ├── benefits/
+    │   ├── chat/route.ts         # Benefits AI chat (Claude + ServiceNow)
+    │   └── records/route.ts      # ServiceNow benefits data
+    ├── onboarding/
+    │   └── chat/route.ts         # Onboarding AI chat (Claude + ServiceNow)
+    ├── agent/route.ts            # Payroll — Salesforce Agentforce sessions
+    └── servicenow/               # ServiceNow proxy routes
+```
+
+## Engee Agent Architecture
+
+Engee is built on an **agentic loop** pattern using the Anthropic Claude API:
+
+```
+User Message
+     ↓
+Claude (claude-sonnet-4-6) with 9 tools
+     ↓
+stop_reason === "tool_use"?
+  ├── Yes → executeTool() → append result → loop (max 10 iterations)
+  └── No  → return text response
+```
+
+### Engee Tools (9 total)
+
+| Tool | Purpose |
+|---|---|
+| `get_employee_engagement` | ServiceNow lookup + attrition risk scoring |
+| `get_team_engagement_summary` | Team-wide engagement overview |
+| `submit_interest_survey` | Save survey to in-memory store |
+| `find_mentor_match` | Match employee to mentor by department + interests |
+| `find_mentor_by_name` | Look up mentor contact details from roster |
+| `find_available_meeting_slots` | **workIQ** — Microsoft Graph `findMeetingTimes`, returns 3 open 30-min slots |
+| `schedule_coffee_chat` | Send Teams Adaptive Card or Slack message with @mention + suggested slots |
+| `add_engagement_note` | Write check-in note to ServiceNow |
+| `flag_attrition_risk` | Mark employee at-risk in ServiceNow |
+
+### workIQ Calendar Flow
+
+```
+find_available_meeting_slots
+  ├── MICROSOFT_TENANT_ID set?
+  │     ├── Yes → getGraphToken() → POST /users/{email}/findMeetingTimes
+  │     └── No  → getMockSlots() (realistic fallback)
+  └── Returns: { slots: MeetingSlot[], source: "graph" | "mock" }
+```
+
+### Coffee Chat Scheduling Flow
+
+```
+1. Employee asks to schedule a coffee chat
+2. Engee asks for employee's work email
+3. find_available_meeting_slots → 3 suggested time slots
+4. Employee picks a slot
+5. schedule_coffee_chat →
+     Teams: Adaptive Card with FactSet (name, mentor, professional interests,
+            personal interests, preferred time, 3 suggested slots, open calendar action)
+     Slack: Formatted text with bullet-list slots
 ```
 
 ## Layout Hierarchy
 
 ```
-RootLayout (fonts, global CSS, ToastProvider)
-└── (dashboard) group → sidebar + header + content layout
-    ├── Sidebar (fixed left, navigation)
-    ├── Header (sticky top, search, notifications)
+RootLayout
+└── (dashboard) layout → sidebar + header + main content
+    ├── Sidebar (fixed left, module navigation)
+    ├── Header (sticky top)
     └── <main> content area
         └── Module pages
 ```
 
-## Data Flow
-
-There is no database. All data is served from TypeScript files:
-
-```
-src/data/schedule/jobs.ts → exports JOBS array
-↓
-app/(dashboard)/schedule/jobs/page.tsx → imports JOBS, renders table
-```
-
-For pages that need to "create" or "edit" data, the form can either:
-- Show a toast message ("This is a demo — data is not persisted")
-- Use React state to temporarily hold changes during the session
-
 ## Sidebar Navigation System
 
-The sidebar is driven by a configuration object in `src/lib/modules.ts`:
+Driven by `src/lib/modules.ts` (`AI_MODULES` array). Each module has:
 
 ```typescript
-export const AI_MODULES = [
-  {
-    name: "Schedule",
-    slug: "schedule",
-    icon: Calendar,
-    accentColor: "brand-pink",
-    enabled: true,
-    subPages: [
-      { name: "Dashboard", path: "/schedule", icon: "analytics-dashboard" },
-      { name: "Jobs", path: "/schedule/jobs", icon: "HR" },
-      // ...
-    ],
-  },
-  {
-    name: "Sourcing",
-    slug: "sourcing",
-    icon: Search,
-    accentColor: "brand-gold",
-    enabled: true,
-    subPages: [ /* ... */ ],
-  },
-  {
-    name: "Reference",
-    slug: "reference",
-    icon: ClipboardCheck,
-    enabled: false,  // Shows as locked
-    subPages: [],
-  },
-  // ... remaining modules
-];
+{
+  name: string;
+  slug: string;
+  icon: LucideIcon;
+  accentColor: string;   // used for active highlight: bg-${accentColor}
+  enabled: boolean;      // false = locked with lock icon
+  description: string;
+  subPages: SubPage[];
+}
 ```
 
-The sidebar component reads this config and:
-- Renders all modules in the primary nav
-- Shows locked state for `enabled: false` modules
-- Shows sub-navigation for the currently active module
-- Highlights the active page
+Current accent colors by module:
+- Schedule → `brand-pink`
+- Sourcing → `brand-gold`
+- Reference → `brand-teal` (locked)
+- Onboarding → `brand-lime`
+- Benefits → `brand-yellow`
+- Payroll → `brand-cyan`
+- Engee → `brand-lime`
 
-**To add a new module**, a contributor:
-1. Adds an entry to `AI_MODULES` with `enabled: true`
-2. Creates the route files under `app/(dashboard)/<slug>/`
-3. Creates hardcoded data files under `src/data/<slug>/`
+## Key Libraries
 
-## Component Architecture
-
-### Shared Components (`src/components/`)
-
-```
-components/
-├── ui/                    # shadcn/ui primitives (auto-generated)
-│   ├── button.tsx
-│   ├── card.tsx
-│   ├── input.tsx
-│   ├── badge.tsx
-│   ├── table.tsx
-│   ├── dropdown-menu.tsx
-│   └── ...
-│
-├── layout/                # Layout components
-│   ├── sidebar.tsx        # Full sidebar with navigation
-│   ├── header.tsx         # Sticky header bar
-│   └── mobile-menu.tsx    # Mobile hamburger toggle
-│
-└── shared/                # Reusable business components
-    ├── hero-banner.tsx    # Module dashboard banner
-    ├── stats-card.tsx     # Metric card (icon, label, value)
-    ├── page-header.tsx    # Title + description + action button
-    ├── status-badge.tsx   # Active/Draft/Closed badges
-    ├── empty-state.tsx    # "No data" placeholder
-    └── coming-soon.tsx    # Placeholder for unbuilt modules
-```
-
-### Module-Specific Components
-
-Each module can have its own components directory:
-
-```
-components/
-├── schedule/
-│   ├── campaign-stats.tsx
-│   └── activity-feed.tsx
-└── sourcing/
-    ├── campaign-card.tsx
-    └── top-roles.tsx
-```
+| File | Purpose |
+|---|---|
+| `src/lib/engee-store.ts` | In-memory survey store, mentor roster (10 mentors), matching algorithm |
+| `src/lib/calendar.ts` | Microsoft Graph API auth + `findMeetingTimes` + mock slot fallback |
+| `src/lib/servicenow.ts` | ServiceNow REST API helpers (`queryTable`, `updateRecord`) |
+| `src/lib/salesforce.ts` | Salesforce Agentforce session management |
+| `src/lib/modules.ts` | Sidebar navigation config |
+| `src/lib/utils.ts` | `cn()` helper (clsx + twMerge) |
 
 ## Key Design Decisions
 
-1. **No database** — hardcoded TypeScript data files are simpler for contributors to modify and understand
-2. **No auth** — the app loads directly into the dashboard; no login, no user profiles
-3. **Module config object** — centralized navigation config makes adding modules mechanical
-4. **shadcn/ui** — matches the original app's component library; provides accessible, customizable components
-5. **Placeholder pages** — unbuilt modules show "Coming Soon" with the module's description, not a 404
+1. **Agentic loop** — Claude decides which tools to call; the backend executes and feeds results back
+2. **No database for surveys** — in-memory `Map` in `engee-store.ts`; structured to swap to Supabase/SQLite without breaking callers
+3. **Graceful degradation** — every external integration has a fallback (mock data, error message) so the app always works in demo mode
+4. **Module config** — centralised `AI_MODULES` makes sidebar navigation and accent colors mechanical to change
+5. **Calendar mock** — `src/lib/calendar.ts` generates realistic business-day slots when Azure credentials are absent

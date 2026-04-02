@@ -332,8 +332,8 @@ function ChipSelector({
             onClick={() => toggle(opt)}
             className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
               active
-                ? "bg-brand-cyan text-white border-brand-cyan shadow-sm"
-                : "bg-white text-muted-foreground border-border hover:border-brand-cyan/50 hover:text-foreground"
+                ? "bg-brand-lime text-white border-brand-lime shadow-sm"
+                : "bg-white text-muted-foreground border-border hover:border-brand-lime/50 hover:text-foreground"
             }`}
           >
             {active && <Check className="inline h-3 w-3 mr-1 -mt-0.5" />}
@@ -353,9 +353,9 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
           <div
             className={`h-2 rounded-full transition-all duration-300 ${
               i < current
-                ? "bg-brand-cyan w-6"
+                ? "bg-brand-lime w-6"
                 : i === current
-                ? "bg-brand-cyan w-8"
+                ? "bg-brand-lime w-8"
                 : "bg-muted w-6"
             }`}
           />
@@ -484,7 +484,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                       value={form.employee_name}
                       onChange={(e) => update("employee_name", e.target.value)}
                       placeholder="e.g. Sarah Johnson"
-                      className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30"
+                      className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30"
                     />
                   </div>
                   <div>
@@ -494,7 +494,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                       value={form.role}
                       onChange={(e) => update("role", e.target.value)}
                       placeholder="e.g. Software Engineer"
-                      className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30"
+                      className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30"
                     />
                   </div>
                   <div>
@@ -502,7 +502,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     <select
                       value={form.department}
                       onChange={(e) => update("department", e.target.value)}
-                      className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30"
+                      className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30"
                     >
                       <option value="">Select your department</option>
                       {DEPARTMENTS.map((d) => (
@@ -518,7 +518,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                         value={form.city}
                         onChange={(e) => update("city", e.target.value)}
                         placeholder="e.g. Vancouver"
-                        className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30"
+                        className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30"
                       />
                     </div>
                     <div className="flex-1">
@@ -528,7 +528,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                         value={form.country}
                         onChange={(e) => update("country", e.target.value)}
                         placeholder="e.g. Canada"
-                        className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30"
+                        className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30"
                       />
                     </div>
                   </div>
@@ -552,7 +552,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     onChange={(v) => update("professional_interests", v)}
                   />
                   {form.professional_interests.length > 0 && (
-                    <p className="text-xs text-brand-cyan">{form.professional_interests.length} selected</p>
+                    <p className="text-xs text-brand-lime">{form.professional_interests.length} selected</p>
                   )}
                 </div>
 
@@ -564,7 +564,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     onChange={(v) => update("learning_interests", v)}
                   />
                   {form.learning_interests.length > 0 && (
-                    <p className="text-xs text-brand-cyan">{form.learning_interests.length} selected</p>
+                    <p className="text-xs text-brand-lime">{form.learning_interests.length} selected</p>
                   )}
                 </div>
               </div>
@@ -585,7 +585,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     onChange={(v) => update("personal_interests", v)}
                   />
                   {form.personal_interests.length > 0 && (
-                    <p className="text-xs text-brand-cyan mt-2">{form.personal_interests.length} selected</p>
+                    <p className="text-xs text-brand-lime mt-2">{form.personal_interests.length} selected</p>
                   )}
                 </div>
                 {form.personal_interests.includes("Other") && (
@@ -598,7 +598,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                       value={form.other_hobby}
                       onChange={(e) => update("other_hobby", e.target.value)}
                       placeholder="e.g. Pottery, Beekeeping, Bouldering..."
-                      className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30"
+                      className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30"
                     />
                   </div>
                 )}
@@ -621,7 +621,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     onChange={(v) => update("work_style", v)}
                   />
                   {form.work_style.length > 0 && (
-                    <p className="text-xs text-brand-cyan">{form.work_style.length} selected</p>
+                    <p className="text-xs text-brand-lime">{form.work_style.length} selected</p>
                   )}
                 </div>
 
@@ -633,7 +633,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     onChange={(v) => update("communication_style", v)}
                   />
                   {form.communication_style.length > 0 && (
-                    <p className="text-xs text-brand-cyan">{form.communication_style.length} selected</p>
+                    <p className="text-xs text-brand-lime">{form.communication_style.length} selected</p>
                   )}
                 </div>
 
@@ -645,7 +645,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     onChange={(v) => update("motivations", v)}
                   />
                   {form.motivations.length > 0 && (
-                    <p className="text-xs text-brand-cyan">{form.motivations.length} selected</p>
+                    <p className="text-xs text-brand-lime">{form.motivations.length} selected</p>
                   )}
                 </div>
 
@@ -657,7 +657,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     onChange={(v) => update("personality_traits", v)}
                   />
                   {form.personality_traits.length > 0 && (
-                    <p className="text-xs text-brand-cyan">{form.personality_traits.length} selected</p>
+                    <p className="text-xs text-brand-lime">{form.personality_traits.length} selected</p>
                   )}
                 </div>
               </div>
@@ -681,8 +681,8 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                         onClick={() => update("career_stage", opt)}
                         className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
                           form.career_stage === opt
-                            ? "bg-brand-cyan text-white border-brand-cyan shadow-sm"
-                            : "bg-white text-muted-foreground border-border hover:border-brand-cyan/50 hover:text-foreground"
+                            ? "bg-brand-lime text-white border-brand-lime shadow-sm"
+                            : "bg-white text-muted-foreground border-border hover:border-brand-lime/50 hover:text-foreground"
                         }`}
                       >
                         {opt}
@@ -701,8 +701,8 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                         onClick={() => update("peak_productivity", opt)}
                         className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
                           form.peak_productivity === opt
-                            ? "bg-brand-cyan text-white border-brand-cyan shadow-sm"
-                            : "bg-white text-muted-foreground border-border hover:border-brand-cyan/50 hover:text-foreground"
+                            ? "bg-brand-lime text-white border-brand-lime shadow-sm"
+                            : "bg-white text-muted-foreground border-border hover:border-brand-lime/50 hover:text-foreground"
                         }`}
                       >
                         {opt}
@@ -767,7 +767,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     onChange={(e) => update("goals_90_days", e.target.value)}
                     placeholder="e.g. Get up to speed on the codebase, ship my first feature, and build relationships with the team..."
                     rows={3}
-                    className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30 resize-none"
+                    className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30 resize-none"
                   />
                 </div>
                 <div>
@@ -779,7 +779,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                     onChange={(e) => update("questions_for_mentor", e.target.value)}
                     placeholder="e.g. How did you navigate your first year? What do you wish you'd known earlier?"
                     rows={2}
-                    className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30 resize-none"
+                    className="w-full bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30 resize-none"
                   />
                 </div>
                 <div>
@@ -792,8 +792,8 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                         onClick={() => update("preferred_platform", p)}
                         className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                           form.preferred_platform === p
-                            ? "border-brand-cyan bg-brand-cyan/5 text-brand-cyan"
-                            : "border-border text-muted-foreground hover:border-brand-cyan/40"
+                            ? "border-brand-lime bg-brand-lime/5 text-brand-lime"
+                            : "border-border text-muted-foreground hover:border-brand-lime/40"
                         }`}
                       >
                         {p === "slack"
@@ -813,8 +813,8 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                         onClick={() => update("preferred_meeting_time", t)}
                         className={`flex-1 py-2.5 rounded-xl border text-sm font-medium capitalize transition-all ${
                           form.preferred_meeting_time === t
-                            ? "border-brand-cyan bg-brand-cyan/5 text-brand-cyan"
-                            : "border-border text-muted-foreground hover:border-brand-cyan/40"
+                            ? "border-brand-lime bg-brand-lime/5 text-brand-lime"
+                            : "border-border text-muted-foreground hover:border-brand-lime/40"
                         }`}
                       >
                         {t}
@@ -850,13 +850,13 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                           onClick={() => toggleMentor(match.mentor.email)}
                           className={`w-full text-left rounded-xl border p-4 space-y-2 transition-all ${
                             isSelected
-                              ? "border-brand-cyan bg-brand-cyan/5 shadow-sm"
-                              : "border-border bg-white hover:border-brand-cyan/40"
+                              ? "border-brand-lime bg-brand-lime/5 shadow-sm"
+                              : "border-border bg-white hover:border-brand-lime/40"
                           }`}
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0 transition-colors ${
-                              isSelected ? "bg-brand-cyan text-white" : "bg-brand-cyan/10 text-brand-cyan"
+                              isSelected ? "bg-brand-lime text-white" : "bg-brand-lime/10 text-brand-lime"
                             }`}>
                               {isSelected
                                 ? <Check className="h-4 w-4" />
@@ -866,12 +866,12 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                               <div className="flex items-center gap-2">
                                 <p className="text-sm font-semibold text-foreground">{match.mentor.name}</p>
                                 {i === 0 && !isSelected && (
-                                  <span className="text-xs px-2 py-0.5 rounded-full bg-brand-cyan/10 text-brand-cyan font-medium">
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-brand-lime/10 text-brand-lime font-medium">
                                     Best match
                                   </span>
                                 )}
                                 {isSelected && (
-                                  <span className="text-xs px-2 py-0.5 rounded-full bg-brand-cyan text-white font-medium">
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-brand-lime text-white font-medium">
                                     Selected
                                   </span>
                                 )}
@@ -884,9 +884,9 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                             <p className="text-xs text-muted-foreground leading-relaxed">{match.mentor.bio}</p>
                           )}
 
-                          <div className="flex items-start gap-1.5 bg-brand-cyan/5 rounded-lg px-3 py-2">
-                            <Sparkles className="h-3.5 w-3.5 text-brand-cyan mt-0.5 flex-shrink-0" />
-                            <p className="text-xs text-brand-cyan">{match.match_reason}</p>
+                          <div className="flex items-start gap-1.5 bg-brand-lime/5 rounded-lg px-3 py-2">
+                            <Sparkles className="h-3.5 w-3.5 text-brand-lime mt-0.5 flex-shrink-0" />
+                            <p className="text-xs text-brand-lime">{match.match_reason}</p>
                           </div>
                         </button>
                       );
@@ -902,7 +902,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
                       .map((m) => m.mentor.name);
                     onComplete?.(form.employee_name, form.department, names);
                   }}
-                  className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-cyan text-white text-sm font-medium hover:bg-brand-cyan/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-lime text-white text-sm font-medium hover:bg-brand-lime/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Sparkles className="h-4 w-4" />
                   {selectedMentors.length === 0
@@ -935,7 +935,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
               type="button"
               onClick={() => go(1)}
               disabled={!canAdvance()}
-              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand-cyan text-white text-sm font-medium hover:bg-brand-cyan/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand-lime text-white text-sm font-medium hover:bg-brand-lime/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Next <ChevronRight className="h-4 w-4" />
             </button>
@@ -944,7 +944,7 @@ export function SurveyForm({ onComplete }: SurveyFormProps) {
               type="button"
               onClick={handleSubmitAndMatch}
               disabled={!canAdvance() || loading}
-              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand-cyan text-white text-sm font-medium hover:bg-brand-cyan/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand-lime text-white text-sm font-medium hover:bg-brand-lime/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {loading ? "Finding matches..." : "Find My Matches"}
               {!loading && <Sparkles className="h-4 w-4" />}

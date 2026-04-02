@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, User, Loader2, RotateCcw, Sparkles } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 
 interface DisplayMessage {
@@ -90,8 +91,8 @@ export function EngeeChat({ seedMessage, onSeedConsumed }: EngeeChatProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-brand-cyan/10 flex items-center justify-center">
-            <Sparkles className="h-5 w-5 text-brand-cyan" />
+          <div className="w-9 h-9 rounded-xl bg-brand-lime/10 flex items-center justify-center">
+            <Sparkles className="h-5 w-5 text-brand-lime" />
           </div>
           <div>
             <h3 className="font-semibold text-sm text-foreground">Engee</h3>
@@ -113,8 +114,8 @@ export function EngeeChat({ seedMessage, onSeedConsumed }: EngeeChatProps) {
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {display.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-14 h-14 rounded-2xl bg-brand-cyan/10 flex items-center justify-center mb-4">
-              <Sparkles className="h-7 w-7 text-brand-cyan" />
+            <div className="w-14 h-14 rounded-2xl bg-brand-lime/10 flex items-center justify-center mb-4">
+              <Sparkles className="h-7 w-7 text-brand-lime" />
             </div>
             <h4 className="font-semibold text-foreground mb-1">Engee — New Employee Engagement</h4>
             <p className="text-sm text-muted-foreground max-w-sm mb-6">
@@ -126,7 +127,7 @@ export function EngeeChat({ seedMessage, onSeedConsumed }: EngeeChatProps) {
                 <button
                   key={s}
                   onClick={() => handleSend(s)}
-                  className="text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-brand-cyan/40 hover:bg-brand-cyan/5 transition-colors"
+                  className="text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-brand-lime/40 hover:bg-brand-lime/5 transition-colors"
                 >
                   {s}
                 </button>
@@ -138,8 +139,8 @@ export function EngeeChat({ seedMessage, onSeedConsumed }: EngeeChatProps) {
         {display.map((msg, i) => (
           <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             {msg.role === "assistant" && (
-              <div className="w-7 h-7 rounded-lg bg-brand-cyan/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Sparkles className="h-4 w-4 text-brand-cyan" />
+              <div className="w-7 h-7 rounded-lg bg-brand-lime/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Sparkles className="h-4 w-4 text-brand-lime" />
               </div>
             )}
             <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
@@ -147,7 +148,27 @@ export function EngeeChat({ seedMessage, onSeedConsumed }: EngeeChatProps) {
                 ? "bg-brand-charcoal text-white rounded-br-md"
                 : "bg-muted text-foreground rounded-bl-md"
             }`}>
-              <p className="whitespace-pre-wrap">{msg.text}</p>
+              {msg.role === "user" ? (
+                <p className="whitespace-pre-wrap">{msg.text}</p>
+              ) : (
+                <ReactMarkdown
+                  components={{
+                    p:          ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                    strong:     ({ children }) => <strong className="font-semibold">{children}</strong>,
+                    ul:         ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
+                    ol:         ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
+                    li:         ({ children }) => <li>{children}</li>,
+                    code:       ({ children }) => <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">{children}</code>,
+                    pre:        ({ children }) => <pre className="bg-black/10 rounded p-2 overflow-x-auto text-xs font-mono mb-2">{children}</pre>,
+                    blockquote: ({ children }) => <blockquote className="border-l-2 border-current pl-3 opacity-70 mb-2">{children}</blockquote>,
+                    h1:         ({ children }) => <p className="font-semibold mb-1">{children}</p>,
+                    h2:         ({ children }) => <p className="font-semibold mb-1">{children}</p>,
+                    h3:         ({ children }) => <p className="font-medium mb-1">{children}</p>,
+                  }}
+                >
+                  {msg.text}
+                </ReactMarkdown>
+              )}
             </div>
             {msg.role === "user" && (
               <div className="w-7 h-7 rounded-lg bg-brand-charcoal/10 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -159,8 +180,8 @@ export function EngeeChat({ seedMessage, onSeedConsumed }: EngeeChatProps) {
 
         {loading && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-lg bg-brand-cyan/10 flex items-center justify-center flex-shrink-0">
-              <Sparkles className="h-4 w-4 text-brand-cyan" />
+            <div className="w-7 h-7 rounded-lg bg-brand-lime/10 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="h-4 w-4 text-brand-lime" />
             </div>
             <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -187,12 +208,12 @@ export function EngeeChat({ seedMessage, onSeedConsumed }: EngeeChatProps) {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Share your interests, find a mentor, or schedule a coffee chat..."
             disabled={loading}
-            className="flex-1 bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-cyan/30 disabled:opacity-50"
+            className="flex-1 bg-muted rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-lime/30 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="w-10 h-10 rounded-xl bg-brand-cyan text-white flex items-center justify-center hover:bg-brand-cyan/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-10 h-10 rounded-xl bg-brand-lime text-white flex items-center justify-center hover:bg-brand-lime/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="h-4 w-4" />
           </button>

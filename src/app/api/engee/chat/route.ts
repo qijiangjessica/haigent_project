@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { queryTable, updateRecord, ONBOARDING_TABLE } from "@/lib/servicenow";
 import { saveSurvey, getSurveyByEmployee, findMentorsByDepartment, findMentorByName } from "@/lib/engee-store";
+import { findAvailableMeetingSlots, formatSlotsForDisplay } from "@/lib/calendar";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -141,11 +142,26 @@ const tools: Anthropic.Tool[] = [
         platform:                { type: "string", enum: ["teams", "slack"] },
         mentor_contact:          { type: "string", description: "Slack user/channel ID or Teams channel for the mentor" },
         mentor_name:             { type: "string", description: "Full name of the mentor being contacted" },
-        employee_name:           { type: "string" },
-        employee_interests:      { type: "string", description: "Summary of employee interests" },
-        meeting_time_preference: { type: "string", enum: ["morning", "afternoon", "flexible"] },
+        employee_name:                    { type: "string" },
+        employee_professional_interests:  { type: "string", description: "Summary of employee's professional interests, e.g. 'System Architecture, Data Engineering, AI & Machine Learning'" },
+        employee_personal_interests:      { type: "string", description: "Summary of employee's personal interests and hobbies, e.g. 'Running & Cycling, Photography, Coffee & Tea'" },
+        meeting_time_preference:          { type: "string", enum: ["morning", "afternoon", "flexible"] },
+        suggested_slots:                  { type: "array", items: { type: "string" }, description: "Up to 3 suggested meeting times to include in the message, e.g. ['Monday April 7, 9:00–9:30 AM', ...]" },
       },
-      required: ["platform", "mentor_contact", "mentor_name", "employee_name", "employee_interests"],
+      required: ["platform", "mentor_contact", "mentor_name", "employee_name", "employee_professional_interests", "employee_personal_interests"],
+    },
+  },
+  {
+    name: "find_available_meeting_slots",
+    description: "Check both the new employee's and mentor's Microsoft 365 Outlook calendars and return 3 available 30-minute slots for a coffee chat. Use this before scheduling so the employee can pick a specific time.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        employee_email:  { type: "string", description: "New employee's Microsoft 365 / Outlook email address" },
+        mentor_name:     { type: "string", description: "Mentor's name — their email is looked up automatically from the roster" },
+        time_preference: { type: "string", enum: ["morning", "afternoon", "flexible"], description: "Preferred time of day for the meeting" },
+      },
+      required: ["employee_email", "mentor_name"],
     },
   },
   {
@@ -287,7 +303,8 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
     }
 
     if (name === "schedule_coffee_chat") {
-      const { platform, mentor_contact, mentor_name, employee_name, employee_interests, meeting_time_preference } = input as Record<string, string>;
+      const { platform, mentor_contact, mentor_name, employee_name, employee_professional_interests, employee_personal_interests, meeting_time_preference } = input as Record<string, string>;
+      const suggested_slots = (input.suggested_slots as string[] | undefined) ?? [];
       const teamsWebhook  = process.env.TEAMS_WEBHOOK_URL;
       const slackWebhook  = process.env.SLACK_WEBHOOK_URL;
 
@@ -298,6 +315,11 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         // so @mention works regardless of what mentor_contact the agent passed
         const mentorRecord = findMentorByName(mentor_name);
         const teamsUserId = mentorRecord?.teams_id ?? mentor_contact;
+
+        const slotsBlock = suggested_slots.length > 0 ? [
+          { type: "TextBlock", text: "📅 Suggested times (30 min each):", weight: "Bolder", spacing: "Medium" },
+          { type: "FactSet", facts: suggested_slots.map((slot, i) => ({ title: `Option ${i + 1}`, value: slot })) },
+        ] : [];
 
         const ok = await sendTeamsMessage(teamsWebhook, {
           type: "message",
@@ -319,11 +341,13 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
                 { type: "FactSet", facts: [
                   { title: "New hire", value: employee_name },
                   { title: "Mentor", value: mentor_name },
-                  { title: "Interests", value: employee_interests },
+                  { title: "Professional interests", value: employee_professional_interests },
+                  { title: "Personal interests", value: employee_personal_interests },
                   { title: "Preferred time", value: meeting_time_preference || "Flexible" },
                   { title: "Requested by", value: "Haigent Engee" },
                 ]},
-                { type: "TextBlock", text: `Could you find a 30-minute slot to connect with ${employee_name}?`, wrap: true, spacing: "Medium" },
+                ...slotsBlock,
+                { type: "TextBlock", text: suggested_slots.length > 0 ? `Please confirm one of the suggested times to connect with ${employee_name}!` : `Could you find a 30-minute slot to connect with ${employee_name}?`, wrap: true, spacing: "Medium" },
               ],
               actions: [{ type: "Action.OpenUrl", title: "Open Calendar", url: "https://outlook.office.com/calendar" }],
             },
@@ -336,13 +360,43 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
 
       if (platform === "slack") {
         if (!slackWebhook) return "Slack webhook URL not configured. Add SLACK_WEBHOOK_URL to .env.local.";
+        const slotsText = suggested_slots.length > 0
+          ? `\n\n📅 *Suggested times (30 min each):*\n${suggested_slots.map((s, i) => `• Option ${i + 1}: ${s}`).join("\n")}`
+          : "";
+        const closingText = suggested_slots.length > 0
+          ? `Please confirm one of the suggested times!`
+          : `Could you find a 30-minute slot to connect?`;
         const ok = await sendSlackWebhook(slackWebhook,
-          `☕ *Coffee Chat Request*\n\nHi <@${mentor_contact}>! *${employee_name}* just joined the team and would love to connect with you.\n\n*New hire:* ${employee_name}\n*Mentor:* ${mentor_name}\n*Interests:* ${employee_interests}\n*Preferred time:* ${meeting_time_preference || "Flexible"}\n\nCould you find a 30-minute slot to connect?`
+          `☕ *Coffee Chat Request*\n\nHi <@${mentor_contact}>! *${employee_name}* just joined the team and would love to connect with you.\n\n*New hire:* ${employee_name}\n*Mentor:* ${mentor_name}\n*Professional interests:* ${employee_professional_interests}\n*Personal interests:* ${employee_personal_interests}\n*Preferred time:* ${meeting_time_preference || "Flexible"}${slotsText}\n\n${closingText}`
         );
         return ok ? `Slack message posted to channel! ${mentor_name} has been notified.` : "Failed to send Slack message. Check SLACK_WEBHOOK_URL.";
       }
 
       return "Unknown platform. Specify 'teams' or 'slack'.";
+    }
+
+    if (name === "find_available_meeting_slots") {
+      const mentor = findMentorByName(String(input.mentor_name));
+      if (!mentor) return `No mentor found matching "${input.mentor_name}".`;
+      if (!mentor.email) return `No email on file for mentor ${mentor.name}.`;
+
+      const { slots, source } = await findAvailableMeetingSlots({
+        employeeEmail:  String(input.employee_email),
+        mentorEmail:    mentor.email,
+        timePreference: (input.time_preference as "morning" | "afternoon" | "flexible") ?? "flexible",
+      });
+
+      const formatted = formatSlotsForDisplay(slots);
+      return JSON.stringify({
+        employee_email: input.employee_email,
+        mentor_name:    mentor.name,
+        mentor_email:   mentor.email,
+        suggested_slots: slots,
+        display: formatted,
+        source: source === "mock"
+          ? "Suggested slots (live calendar sync available once Microsoft Azure app is configured)"
+          : "Live availability from Microsoft 365 calendar",
+      }, null, 2);
     }
 
     if (name === "add_engagement_note") {
@@ -375,12 +429,13 @@ const SYSTEM_PROMPT = `You are Engee, an AI agent specialized in engagement with
 Core capabilities:
 1. INTEREST SURVEY — Conversationally guide new employees through sharing interests and goals, then save with submit_interest_survey.
 2. MENTOR MATCHING — Use find_mentor_match to suggest the right mentor based on department and interests.
-3. DIRECT MEETING SCHEDULING — When an employee asks to schedule a meeting with a specific mentor by name, use find_mentor_by_name to get their contact info, then call schedule_coffee_chat. Do not ask the employee for the mentor's Slack/Teams ID — look it up yourself.
-4. COFFEE CHAT SCHEDULING — Send meeting requests via Teams or Slack using schedule_coffee_chat.
-5. ENGAGEMENT MONITORING — Track milestone check-ins, attrition risk, and team health.
+3. CALENDAR AVAILABILITY (workIQ) — Before scheduling a coffee chat, use find_available_meeting_slots to check both the employee's and mentor's Outlook calendars and surface 3 open 30-minute slots. Ask the employee for their work email if you don't have it. Present the 3 options and let the employee choose one.
+4. DIRECT MEETING SCHEDULING — After the employee picks a slot, use find_mentor_by_name to confirm contact details, then call schedule_coffee_chat with the chosen time. Never ask the employee for the mentor's Slack/Teams ID — look it up yourself.
+5. COFFEE CHAT SCHEDULING — Send meeting requests via Teams or Slack using schedule_coffee_chat.
+6. ENGAGEMENT MONITORING — Track milestone check-ins, attrition risk, and team health.
 
 When an employee has just completed the interest survey form, immediately use find_mentor_match to suggest a match.
-When an employee mentions a mentor by name and wants to schedule a meeting, use find_mentor_by_name first, then schedule_coffee_chat — never ask the employee for contact IDs.
+When scheduling a coffee chat: (1) ask for the employee's work email if needed, (2) call find_available_meeting_slots to get 3 time options, (3) present them clearly, (4) once the employee picks one, call schedule_coffee_chat — pass all 3 slots as suggested_slots (formatted as readable strings, e.g. "Monday April 7, 9:00–9:30 AM") so the mentor sees all options in the message.
 Always be warm, encouraging, and people-first. New employees can be nervous — help them feel welcome.
 For HR managers asking for team overviews, be concise and action-oriented.`;
 
