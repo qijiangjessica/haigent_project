@@ -10,6 +10,12 @@ import { addReferralAndPersist, addMatchesAndPersist, loadFromDisk } from "@/lib
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { OPEN_JOBS, type ReferenceJob } from "@/data/reference/jobs";
 import type { SubmittedReferral } from "@/lib/reference-store";
+import { sendEmail, appUrl } from "@/lib/email";
+import {
+  newReferralRecruiter,
+  submissionConfirmationReferrer,
+  candidateReferred,
+} from "@/lib/email-templates";
 
 function generateReferralId(): string {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -219,7 +225,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const {
-      referrerName, referrerEmpId,
+      referrerName, referrerEmpId, referrerEmail,
       candidateName, candidateEmail, candidatePhone,
       currentEmployer, yearsExperience, location, availability,
       skills, linkedinUrl, targetJobId, referrerNote,
@@ -254,6 +260,7 @@ export async function POST(request: NextRequest) {
       submitted_at: new Date().toISOString(),
       referrer_name: referrerName,
       referrer_emp_id: referrerEmpId ?? "",
+      referrer_email: referrerEmail ?? "",
       candidate_name: candidateName,
       candidate_email: candidateEmail,
       candidate_phone: candidatePhone ?? "",
@@ -308,6 +315,59 @@ export async function POST(request: NextRequest) {
     // Persist all match records to store + disk in one batch write
     if (matchResults.length > 0) {
       addMatchesAndPersist(matchResults);
+    }
+
+    // ── Email notifications (fire-and-forget) ─────────────────────────────
+    const recruiterEmail = process.env.RECRUITER_EMAIL;
+    const referralUrl = appUrl(`/reference/referrals/${referral.referral_id}`);
+
+    const bestMatch = matchResults.length > 0
+      ? matchResults.reduce((a, b) => (a.match_score >= b.match_score ? a : b))
+      : null;
+
+    const targetJob = OPEN_JOBS.find((j) => j.id === referral.target_job_id);
+    const targetJobTitle = targetJob?.title ?? "Open Pool";
+
+    // R1: Notify recruiter of new referral
+    if (recruiterEmail) {
+      const tmpl = newReferralRecruiter({
+        referralId: referral.referral_id,
+        referrerName: referral.referrer_name,
+        candidateName: referral.candidate_name,
+        candidateEmail: referral.candidate_email,
+        location: referral.location,
+        yearsExperience: referral.years_experience,
+        skillsClaimed: referral.skills_claimed,
+        targetJobTitle,
+        bestMatchScore: bestMatch?.match_score ?? null,
+        bestMatchClassification: bestMatch?.classification ?? null,
+        isDuplicate: referral.is_duplicate,
+        referralUrl,
+      });
+      sendEmail({ ...tmpl, to: recruiterEmail, notificationType: "new_referral_recruiter", referralId: referral.referral_id, toRole: "recruiter" }).catch(() => {});
+    }
+
+    // E1: Send submission confirmation to referrer
+    if (referral.referrer_email) {
+      const tmpl = submissionConfirmationReferrer({
+        referrerName: referral.referrer_name,
+        candidateName: referral.candidate_name,
+        referralId: referral.referral_id,
+        targetJobTitle,
+        referralUrl,
+      });
+      sendEmail({ ...tmpl, to: referral.referrer_email, notificationType: "submission_confirmation_referrer", referralId: referral.referral_id, toRole: "referrer" }).catch(() => {});
+    }
+
+    // C1: Notify the candidate they were referred
+    if (referral.candidate_email) {
+      const tmpl = candidateReferred({
+        candidateName: referral.candidate_name,
+        referrerName: referral.referrer_name,
+        jobTitle: targetJobTitle,
+        companyName: "HaiGent",
+      });
+      sendEmail({ ...tmpl, to: referral.candidate_email, notificationType: "candidate_referred", referralId: referral.referral_id, toRole: "candidate" }).catch(() => {});
     }
 
     return NextResponse.json({

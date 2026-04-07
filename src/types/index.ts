@@ -124,6 +124,17 @@ export interface MatchRecord {
   triggered_by: "new_submission" | "new_posting" | "scheduled_refresh";
 }
 
+export interface ContactEvent {
+  contact_id: string;
+  referral_id: string;
+  posting_id: string;
+  contacted_at: string;
+  contact_method: "email" | "phone" | "linkedin" | "other";
+  contacted_by: string;
+  notes: string | null;
+  status: "sent" | "replied" | "no_response";
+}
+
 export interface TalentPoolRecord {
   pool_id: string;
   candidate_id: string;
@@ -153,4 +164,16 @@ export interface AuditLogEntry {
   before_state: string | null;
   after_state: string;
   notes: string | null;
+}
+
+export interface NotificationLogEntry {
+  log_id: string;
+  sent_at: string;
+  notification_type: string;
+  to_email: string;
+  to_role: "recruiter" | "referrer" | "candidate";
+  referral_id: string | null;
+  subject: string;
+  status: "sent" | "failed" | "dev_logged";
+  error_message: string | null;
 }

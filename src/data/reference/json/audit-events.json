@@ -1,1 +1,38 @@
-[]
+[
+  {
+    "event_id": "EVT-REJ-1775594801473",
+    "timestamp": "2026-04-07T20:46:41.473Z",
+    "actor": "Recruiter",
+    "actor_id": "Recruiter",
+    "event_type": "Decision",
+    "entity_type": "referral",
+    "entity_id": "REF-20260407-76MI",
+    "before_state": "pending_review",
+    "after_state": "not_suitable",
+    "notes": "Not Suitable"
+  },
+  {
+    "event_id": "EVT-PROMO-1775594886860",
+    "timestamp": "2026-04-07T20:48:06.860Z",
+    "actor": "Recruiter",
+    "actor_id": "Recruiter",
+    "event_type": "PoolPromotion",
+    "entity_type": "referral",
+    "entity_id": "REF-20260407-27PK",
+    "before_state": "pending_review",
+    "after_state": "in_pool",
+    "notes": "Promoted to pool as LPOOL-U3ZOP · Level: Mid"
+  },
+  {
+    "event_id": "EVT-PROMO-1775595388972",
+    "timestamp": "2026-04-07T20:56:28.972Z",
+    "actor": "Recruiter",
+    "actor_id": "Recruiter",
+    "event_type": "PoolPromotion",
+    "entity_type": "referral",
+    "entity_id": "REF-20260406-QJTL",
+    "before_state": "pending_review",
+    "after_state": "in_pool",
+    "notes": "Promoted to pool as LPOOL-X55YI · Level: Mid"
+  }
+]

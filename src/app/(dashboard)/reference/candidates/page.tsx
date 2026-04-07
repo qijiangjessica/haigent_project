@@ -103,6 +103,11 @@ function classifyScore(score: number): "Strong Match" | "Partial Match" | "No Ma
   return score >= 70 ? "Strong Match" : score >= 50 ? "Partial Match" : "No Match";
 }
 
+function daysSince(dateStr: string): number {
+  const d = new Date(dateStr);
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
 type DecisionValue = "PROCEED" | "ON_HOLD" | "NOT_SUITABLE" | null;
 
 interface CandidateDecision {
@@ -122,6 +127,7 @@ export default function CandidatesPage() {
   const [statusOverridesMap, setStatusOverridesMap] = useState<Record<string, string>>({});
   const [submittedReferrals, setSubmittedReferrals] = useState<SubmittedReferral[]>([]);
   const [liveMatches, setLiveMatches] = useState<LiveMatchRecord[]>([]);
+  const [contactSummary, setContactSummary] = useState<Record<string, number>>({});
   const [expandedLiveScores, setExpandedLiveScores] = useState<Set<string>>(new Set());
 
   // Bulk selection
@@ -258,6 +264,13 @@ export default function CandidatesPage() {
       .then((r) => r.json())
       .then((data: { rejected_ids: string[] }) => {
         setRejectedSet(new Set(data.rejected_ids ?? []));
+      })
+      .catch(() => {});
+
+    fetch("/api/reference/contacts/summary")
+      .then((r) => r.json())
+      .then((data: { summary: Record<string, number> }) => {
+        setContactSummary(data.summary ?? {});
       })
       .catch(() => {});
   }, []);
@@ -795,6 +808,10 @@ export default function CandidatesPage() {
           const ref = REFERENCES.find((r) => r.reference_id === candidate.reference_id);
           const matches = MATCH_RECORDS.filter((m) => m.candidate_id === candidate.candidate_id);
           const bestMatch = bestMatchByCandidate[candidate.candidate_id];
+          const candDays = ref ? daysSince(ref.submission_date) : 0;
+          const candMatched = matches.filter((m) => m.classification !== "No Match").length;
+          const candContacted = contactSummary[candidate.reference_id] ?? 0;
+          const candStale = candDays > 14 && candContacted === 0;
           const scoreExpanded = expandedScores.has(candidate.candidate_id);
           const dec = decisions[candidate.candidate_id] ?? { decision: null, reasonCode: "" };
           const effectiveStatus = statusOverridesMap[candidate.candidate_id] ?? candidate.pool_status;
@@ -843,6 +860,15 @@ export default function CandidatesPage() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {candidate.email} · {candidate.phone}
                   </p>
+                  <div className="mt-1.5">
+                    <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-full font-medium border ${
+                      candStale
+                        ? "bg-brand-gold/10 text-brand-gold border-brand-gold/30"
+                        : "bg-muted text-muted-foreground border-border"
+                    }`}>
+                      {candDays}d · {candMatched} matched · {candContacted} contacted
+                    </span>
+                  </div>
                   </div>
                 </div>
 
@@ -1083,6 +1109,10 @@ export default function CandidatesPage() {
                 return acc;
               }, {});
               const sortedMatches = Object.values(latestByJob).sort((a, b) => b.match_score - a.match_score);
+              const refDays = daysSince(referral.submitted_at);
+              const refMatched = sortedMatches.filter((m) => m.classification !== "No Match").length;
+              const refContacted = contactSummary[referral.referral_id] ?? 0;
+              const refStale = refDays > 14 && refContacted === 0;
               const bestMatch = sortedMatches[0] ?? null;
               const liveScoreExpanded = expandedLiveScores.has(referral.referral_id);
               const isPromoted = !!promotedMap[referral.referral_id];
@@ -1141,6 +1171,15 @@ export default function CandidatesPage() {
                       <p className="text-xs text-muted-foreground mt-0.5">
                         Referred by {referral.referrer_name} · {new Date(referral.submitted_at).toLocaleDateString("en-CA")}
                       </p>
+                      <div className="mt-1.5">
+                        <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-full font-medium border ${
+                          refStale
+                            ? "bg-brand-gold/10 text-brand-gold border-brand-gold/30"
+                            : "bg-muted text-muted-foreground border-border"
+                        }`}>
+                          {refDays}d · {refMatched} matched · {refContacted} contacted
+                        </span>
+                      </div>
                     </div>
                     {bestMatch && (
                       <div className="flex flex-col items-end gap-1 flex-shrink-0">

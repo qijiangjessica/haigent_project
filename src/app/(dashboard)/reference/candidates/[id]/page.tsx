@@ -7,7 +7,7 @@ import {
   ArrowLeft, CheckCircle2, Clock, XCircle,
   ExternalLink, FileText, User, Building2,
   MapPin, Calendar, Briefcase, TrendingUp, Sparkles, Loader2,
-  Circle, GitCommitHorizontal,
+  Circle, GitCommitHorizontal, Mail, Phone, Linkedin, MoreHorizontal,
 } from "lucide-react";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
@@ -15,6 +15,8 @@ import { MATCH_RECORDS } from "@/data/reference/matches";
 import { AUDIT_LOG } from "@/data/reference/audit-log";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
 import type { MatchRecord, ReferenceCandidate } from "@/types";
+import { ReferralActivityBanner } from "@/components/reference/referral-activity-banner";
+import { ContactHistoryPanel } from "@/components/reference/contact-history-panel";
 import type { ReferenceJob } from "@/data/reference/jobs";
 
 // ─── Status helpers ───────────────────────────────────────────────
@@ -147,6 +149,13 @@ export default function CandidateDetailPage() {
     event_type: string; before_state: string | null; after_state: string; notes: string | null;
   }>>([]);
   const [weights, setWeights] = useState({ skill: 50, experience: 25, location: 15, seniority: 10 });
+  const [contactedCount, setContactedCount] = useState(0);
+  const [contactedPostingIds, setContactedPostingIds] = useState<Set<string>>(new Set());
+  const [contactFormOpenId, setContactFormOpenId] = useState<string | null>(null);
+  const [contactMethod, setContactMethod] = useState<"email" | "phone" | "linkedin" | "other">("email");
+  const [contactNotes, setContactNotes] = useState("");
+  const [contactSaving, setContactSaving] = useState(false);
+  const [contactRefresh, setContactRefresh] = useState(0);
 
   useEffect(() => {
     // Load existing decision
@@ -180,7 +189,60 @@ export default function CandidateDetailPage() {
       .then((r) => r.json())
       .then((data) => setWeights(data.weights))
       .catch(() => {});
+
+    // Load contact events for this candidate's referral
+    const cand = REFERENCE_CANDIDATES.find((c) => c.candidate_id === id);
+    if (cand?.reference_id) {
+      fetch(`/api/reference/contacts?referral_id=${cand.reference_id}`)
+        .then((r) => r.json())
+        .then((data: { contacts: Array<{ posting_id: string }> }) => {
+          const unique = new Set(data.contacts.map((c) => c.posting_id));
+          setContactedCount(unique.size);
+          setContactedPostingIds(unique);
+        })
+        .catch(() => {});
+    }
   }, [id]);
+
+  function openContactForm(postingId: string) {
+    setContactFormOpenId(postingId);
+    setContactMethod("email");
+    setContactNotes("");
+  }
+
+  function closeContactForm() {
+    setContactFormOpenId(null);
+    setContactNotes("");
+  }
+
+  async function handleMarkContacted(postingId: string) {
+    const cand = REFERENCE_CANDIDATES.find((c) => c.candidate_id === id);
+    if (!cand?.reference_id || contactSaving) return;
+    setContactSaving(true);
+    try {
+      const res = await fetch("/api/reference/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          referral_id: cand.reference_id,
+          posting_id: postingId,
+          contact_method: contactMethod,
+          contacted_by: "Recruiter",
+          notes: contactNotes.trim() || null,
+        }),
+      });
+      if (res.ok) {
+        setContactedPostingIds((prev) => new Set([...prev, postingId]));
+        setContactedCount((prev) => prev + 1);
+        setContactRefresh((n) => n + 1);
+        closeContactForm();
+      }
+    } catch {
+      // silent
+    } finally {
+      setContactSaving(false);
+    }
+  }
 
   function handleDecision(d: "PROCEED" | "ON_HOLD" | "NOT_SUITABLE") {
     const next = decision === d ? null : d;
@@ -374,6 +436,21 @@ Cover: overall profile strength, key verified strengths, any notable skill gaps,
         </div>
       </div>
 
+      {/* Referral Activity Banner */}
+      <ReferralActivityBanner
+        submittedAt={ref?.submission_date ?? ""}
+        matches={matches}
+        contactedCount={contactedCount}
+      />
+
+      {/* Contact History */}
+      {ref?.reference_id && (
+        <ContactHistoryPanel
+          referralId={ref.reference_id}
+          refreshTrigger={contactRefresh}
+        />
+      )}
+
       {/* AI Summary */}
       <div className="bg-white rounded-xl border border-border shadow-sm p-5">
         <div className="flex items-center justify-between">
@@ -498,6 +575,67 @@ Cover: overall profile strength, key verified strengths, any notable skill gaps,
                       {computed.toFixed(0)}
                     </span>
                   </div>
+                </div>
+
+                {/* Contact action */}
+                <div className="mt-3 pt-3 border-t border-border">
+                  {contactedPostingIds.has(match.posting_id) ? (
+                    <span className="flex items-center gap-1 text-xs text-brand-green font-medium">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Contacted
+                    </span>
+                  ) : contactFormOpenId === match.posting_id ? (
+                    <div>
+                      <p className="text-xs font-semibold text-foreground mb-2">Log contact for this job</p>
+                      <div className="flex items-center gap-2 mb-2">
+                        {(["email", "phone", "linkedin", "other"] as const).map((m_) => {
+                          const icons = { email: Mail, phone: Phone, linkedin: Linkedin, other: MoreHorizontal };
+                          const Icon = icons[m_];
+                          const active = contactMethod === m_;
+                          return (
+                            <button
+                              key={m_}
+                              onClick={() => setContactMethod(m_)}
+                              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors capitalize ${
+                                active
+                                  ? "bg-brand-teal text-white border-brand-teal"
+                                  : "border-border text-muted-foreground hover:border-brand-teal/40 hover:text-brand-teal"
+                              }`}
+                            >
+                              <Icon className="h-3 w-3" />
+                              {m_}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <textarea
+                        rows={2}
+                        placeholder="Notes (optional)"
+                        value={contactNotes}
+                        onChange={(e) => setContactNotes(e.target.value)}
+                        className="w-full bg-muted rounded-lg px-3 py-2 text-xs text-foreground border border-border focus:outline-none focus:ring-2 focus:ring-brand-teal/30 resize-none mb-2"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleMarkContacted(match.posting_id)}
+                          disabled={contactSaving}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-teal text-white text-xs font-medium hover:bg-brand-teal/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {contactSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                          {contactSaving ? "Saving…" : "Confirm"}
+                        </button>
+                        <button onClick={closeContactForm} className="text-xs text-muted-foreground hover:text-foreground">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => openContactForm(match.posting_id)}
+                      className="text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:border-brand-teal/40 hover:text-brand-teal hover:bg-brand-teal/5 transition-colors"
+                    >
+                      Mark Contacted
+                    </button>
+                  )}
                 </div>
               </div>
             );

@@ -1,6 +1,6 @@
 {
-  "skill": 75,
+  "skill": 50,
   "experience": 25,
-  "location": 0,
-  "seniority": 0
+  "location": 15,
+  "seniority": 10
 }

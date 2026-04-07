@@ -1,0 +1,68 @@
+[
+  {
+    "log_id": "LOG-1775594063355-LOK3",
+    "sent_at": "2026-04-07T20:34:23.355Z",
+    "notification_type": "new_referral_recruiter",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "recruiter",
+    "referral_id": "REF-20260407-27PK",
+    "subject": "[Duplicate] New referral: Alex Nuegoe",
+    "status": "failed",
+    "error_message": "You can only send testing emails to your own email address (sandilyamunna@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+  },
+  {
+    "log_id": "LOG-1775594063366-LK6E",
+    "sent_at": "2026-04-07T20:34:23.366Z",
+    "notification_type": "submission_confirmation_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260407-27PK",
+    "subject": "Your referral for Alex Nuegoe has been received",
+    "status": "failed",
+    "error_message": "You can only send testing emails to your own email address (sandilyamunna@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+  },
+  {
+    "log_id": "LOG-1775594063424-3HK7",
+    "sent_at": "2026-04-07T20:34:23.424Z",
+    "notification_type": "candidate_referred",
+    "to_email": "alex.nuego@gmail.com",
+    "to_role": "candidate",
+    "referral_id": "REF-20260407-27PK",
+    "subject": "You've been referred for a Open Pool role at HaiGent",
+    "status": "failed",
+    "error_message": "You can only send testing emails to your own email address (sandilyamunna@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+  },
+  {
+    "log_id": "LOG-1775595498246-O5EF",
+    "sent_at": "2026-04-07T20:58:18.246Z",
+    "notification_type": "candidate_referred",
+    "to_email": "alex.nuego@gmail.com",
+    "to_role": "candidate",
+    "referral_id": "REF-20260407-30I9",
+    "subject": "You've been referred for a Open Pool role at HaiGent",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775595498253-U2J5",
+    "sent_at": "2026-04-07T20:58:18.253Z",
+    "notification_type": "new_referral_recruiter",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "recruiter",
+    "referral_id": "REF-20260407-30I9",
+    "subject": "[Duplicate] New referral: Alex Janes",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775595498285-ERE8",
+    "sent_at": "2026-04-07T20:58:18.285Z",
+    "notification_type": "submission_confirmation_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260407-30I9",
+    "subject": "Your referral for Alex Janes has been received",
+    "status": "sent",
+    "error_message": null
+  }
+]

@@ -65,6 +65,7 @@ export interface SubmittedReferral {
   submitted_at: string;
   referrer_name: string;
   referrer_emp_id: string;
+  referrer_email: string;
   candidate_name: string;
   candidate_email: string;
   candidate_phone: string;

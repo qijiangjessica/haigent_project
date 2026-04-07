@@ -216,6 +216,80 @@ export function deleteJobWeightOverrideAndPersist(jobId: string): void {
   writeJson(FILES.jobWeightOverrides, getAllJobWeightOverrides());
 }
 
+// ── Contact event persistence (file-direct, no in-memory store needed) ────────
+
+import type { ContactEvent } from "@/types";
+
+const CONTACTS_FILE = path.join(JSON_DIR, "contacts.json");
+
+/** Read all contact events from disk. */
+export function readContacts(): ContactEvent[] {
+  return readJson<ContactEvent[]>(CONTACTS_FILE, []);
+}
+
+/** Overwrite the contacts file with the provided array. */
+export function writeContacts(contacts: ContactEvent[]): void {
+  writeJson(CONTACTS_FILE, contacts);
+}
+
+/** Append a single contact event and persist immediately. */
+export function addContactAndPersist(event: ContactEvent): void {
+  const contacts = readContacts();
+  contacts.push(event);
+  writeContacts(contacts);
+}
+
+/** Return all contact events for a given referral_id. */
+export function getContactsByReferralId(referralId: string): ContactEvent[] {
+  return readContacts().filter((c) => c.referral_id === referralId);
+}
+
+/** Update the status of a single contact event. Returns false if not found. */
+export function updateContactStatusAndPersist(
+  contactId: string,
+  status: ContactEvent["status"]
+): boolean {
+  const contacts = readContacts();
+  const idx = contacts.findIndex((c) => c.contact_id === contactId);
+  if (idx === -1) return false;
+  contacts[idx] = { ...contacts[idx], status };
+  writeContacts(contacts);
+  return true;
+}
+
+// ── Notification log persistence ───────────────────────────────────────────
+
+import type { NotificationLogEntry } from "@/types";
+
+const NOTIFICATION_LOG_FILE = path.join(JSON_DIR, "notification-log.json");
+
+export function readNotificationLog(): NotificationLogEntry[] {
+  return readJson<NotificationLogEntry[]>(NOTIFICATION_LOG_FILE, []);
+}
+
+export function writeNotificationLog(entries: NotificationLogEntry[]): void {
+  writeJson(NOTIFICATION_LOG_FILE, entries);
+}
+
+export function appendNotificationLogEntry(entry: NotificationLogEntry): void {
+  const log = readNotificationLog();
+  log.push(entry);
+  writeNotificationLog(log);
+}
+
+/** Return a map of referral_id → number of unique posting_ids contacted. */
+export function getContactedCountByReferral(): Record<string, number> {
+  const contacts = readContacts();
+  const map: Record<string, Set<string>> = {};
+  for (const c of contacts) {
+    if (!map[c.referral_id]) map[c.referral_id] = new Set();
+    map[c.referral_id].add(c.posting_id);
+  }
+  return Object.fromEntries(
+    Object.entries(map).map(([id, set]) => [id, set.size])
+  );
+}
+
 // ── Standalone persistX() helpers (commented out — replaced by wired functions above) ──
 //
 // export const persistReferrals      = (data: SubmittedReferral[])          => writeJson(FILES.referrals,       data);

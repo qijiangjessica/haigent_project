@@ -7,8 +7,11 @@ import {
   ArrowLeft, CheckCircle2, Circle, Loader2, TrendingUp,
   ChevronDown, ChevronUp, Database, GitBranch, AlertTriangle,
   CheckSquare, Package, Sparkles, RefreshCw, Pencil, X, Save,
+  Mail, Phone, Linkedin, MoreHorizontal,
 } from "lucide-react";
 import { REFERENCE_JOBS, OPEN_JOBS } from "@/data/reference/jobs";
+import { ReferralActivityBanner } from "@/components/reference/referral-activity-banner";
+import { ContactHistoryPanel } from "@/components/reference/contact-history-panel";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -339,6 +342,52 @@ export default function ReferralDetailPage() {
   const [editStatus, setEditStatus] = useState<"idle" | "success" | "error">("idle");
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Contact tracking
+  const [contactedPostingIds, setContactedPostingIds] = useState<Set<string>>(new Set());
+  const [contactFormOpenId, setContactFormOpenId] = useState<string | null>(null);
+  const [contactMethod, setContactMethod] = useState<"email" | "phone" | "linkedin" | "other">("email");
+  const [contactNotes, setContactNotes] = useState("");
+  const [contactSaving, setContactSaving] = useState(false);
+  const [contactRefresh, setContactRefresh] = useState(0);
+
+  function openContactForm(postingId: string) {
+    setContactFormOpenId(postingId);
+    setContactMethod("email");
+    setContactNotes("");
+  }
+
+  function closeContactForm() {
+    setContactFormOpenId(null);
+    setContactNotes("");
+  }
+
+  async function handleMarkContacted(postingId: string) {
+    if (!referral || contactSaving) return;
+    setContactSaving(true);
+    try {
+      const res = await fetch("/api/reference/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          referral_id: referral.referral_id,
+          posting_id: postingId,
+          contact_method: contactMethod,
+          contacted_by: "Recruiter",
+          notes: contactNotes.trim() || null,
+        }),
+      });
+      if (res.ok) {
+        setContactedPostingIds((prev) => new Set([...prev, postingId]));
+        setContactRefresh((n) => n + 1);
+        closeContactForm();
+      }
+    } catch {
+      // silent
+    } finally {
+      setContactSaving(false);
+    }
+  }
+
   function toggleMatch(id: string) {
     setExpandedMatches((prev) => {
       const next = new Set(prev);
@@ -368,6 +417,15 @@ export default function ReferralDetailPage() {
         setPoolEntry(data.poolEntry ?? null);
         if (data.referral?.location) setLocationTags(data.referral.location);
         setLoading(false);
+
+        // Load existing contact events for this referral
+        fetch(`/api/reference/contacts?referral_id=${referral_id}`)
+          .then((r) => r.json())
+          .then((d) => {
+            const ids = new Set<string>((d.contacts ?? []).map((c: { posting_id: string }) => c.posting_id));
+            setContactedPostingIds(ids);
+          })
+          .catch(() => {});
       })
       .catch(() => { setNotFound(true); setLoading(false); });
   }, [referral_id]);
@@ -691,6 +749,19 @@ Cover: overall candidate profile strength based on the match scores, what the AI
           )}
         </div>
       </div>
+
+      {/* ── Referral Activity Banner ── */}
+      <ReferralActivityBanner
+        submittedAt={referral.submitted_at}
+        matches={uniqueMatches}
+        contactedCount={contactedPostingIds.size}
+      />
+
+      {/* ── Contact History ── */}
+      <ContactHistoryPanel
+        referralId={referral.referral_id}
+        refreshTrigger={contactRefresh}
+      />
 
       {/* ── Recruiter inline edit form ── */}
       {editMode && (
@@ -1273,8 +1344,72 @@ Cover: overall candidate profile strength based on the match scores, what the AI
                                 Why?
                                 {expandedWhy.has(m.match_id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                               </button>
+                              {contactedPostingIds.has(m.posting_id) ? (
+                                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-brand-green/10 text-brand-green font-medium">
+                                  <CheckCircle2 className="h-3 w-3" /> Contacted
+                                </span>
+                              ) : contactFormOpenId === m.posting_id ? (
+                                <button
+                                  onClick={closeContactForm}
+                                  className="text-xs px-2 py-0.5 rounded-full border border-border text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => openContactForm(m.posting_id)}
+                                  className="text-xs px-2 py-0.5 rounded-full border border-border text-muted-foreground hover:border-brand-teal/40 hover:text-brand-teal hover:bg-brand-teal/5 transition-colors"
+                                >
+                                  Mark Contacted
+                                </button>
+                              )}
                             </div>
                           </div>
+
+                          {/* Inline contact form */}
+                          {contactFormOpenId === m.posting_id && (
+                            <div className="px-4 py-3 bg-brand-teal/5 border-t border-brand-teal/20">
+                              <p className="text-xs font-semibold text-foreground mb-2">Log contact for this job</p>
+                              {/* Method pills */}
+                              <div className="flex items-center gap-2 mb-3">
+                                {(["email", "phone", "linkedin", "other"] as const).map((m_) => {
+                                  const icons = { email: Mail, phone: Phone, linkedin: Linkedin, other: MoreHorizontal };
+                                  const Icon = icons[m_];
+                                  const active = contactMethod === m_;
+                                  return (
+                                    <button
+                                      key={m_}
+                                      onClick={() => setContactMethod(m_)}
+                                      className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors capitalize ${
+                                        active
+                                          ? "bg-brand-teal text-white border-brand-teal"
+                                          : "border-border text-muted-foreground hover:border-brand-teal/40 hover:text-brand-teal"
+                                      }`}
+                                    >
+                                      <Icon className="h-3 w-3" />
+                                      {m_}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {/* Notes */}
+                              <textarea
+                                rows={2}
+                                placeholder="Notes (optional)"
+                                value={contactNotes}
+                                onChange={(e) => setContactNotes(e.target.value)}
+                                className="w-full bg-white rounded-lg px-3 py-2 text-xs text-foreground border border-border focus:outline-none focus:ring-2 focus:ring-brand-teal/30 resize-none mb-2"
+                              />
+                              <button
+                                onClick={() => handleMarkContacted(m.posting_id)}
+                                disabled={contactSaving}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-teal text-white text-xs font-medium hover:bg-brand-teal/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {contactSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                                {contactSaving ? "Saving…" : "Confirm"}
+                              </button>
+                            </div>
+                          )}
 
                           {/* Score breakdown */}
                           {expanded && (

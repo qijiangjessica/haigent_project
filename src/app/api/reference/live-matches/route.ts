@@ -7,7 +7,7 @@ import {
 import { loadFromDisk } from "@/lib/reference-json-persistence";
 
 function hydrateIfEmpty() {
-  if (getLiveMatchRecords().length === 0 && getReferrals().length === 0) {
+  if (getLiveMatchRecords().length === 0 || getReferrals().length === 0) {
     try {
       const snap = loadFromDisk();
       for (const r of snap.referrals)     addReferral(r);

@@ -6,10 +6,12 @@ import { PageHeader } from "@/components/shared/page-header";
 import { OPEN_JOBS } from "@/data/reference/jobs";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { CheckCircle2, Upload, X, FileText, AlertTriangle, ChevronDown, ChevronUp, Loader2, Sparkles } from "lucide-react";
+import { ReferralActivityBanner } from "@/components/reference/referral-activity-banner";
 
 interface FormState {
   referrerName: string;
   referrerEmpId: string;
+  referrerEmail: string;
   candidateName: string;
   candidateEmail: string;
   candidatePhone: string;
@@ -26,6 +28,7 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   referrerName: "",
   referrerEmpId: "",
+  referrerEmail: "",
   candidateName: "",
   candidateEmail: "",
   candidatePhone: "",
@@ -63,6 +66,11 @@ export default function SubmitReferralPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitResult, setSubmitResult] = useState<{
+    referral_id: string;
+    submitted_at: string;
+    match_results: Array<{ posting_id: string; classification: string }>;
+  } | null>(null);
   const resumeRef = useRef<HTMLInputElement>(null);
   const extraRef = useRef<HTMLInputElement>(null);
 
@@ -178,6 +186,7 @@ export default function SubmitReferralPage() {
         body: JSON.stringify({
           referrerName: form.referrerName,
           referrerEmpId: form.referrerEmpId,
+          referrerEmail: form.referrerEmail,
           candidateName: form.candidateName,
           candidateEmail: form.candidateEmail,
           candidatePhone: form.candidatePhone,
@@ -202,6 +211,11 @@ export default function SubmitReferralPage() {
         return;
       }
       const data = await res.json();
+      setSubmitResult({
+        referral_id: data.referral_id ?? "",
+        submitted_at: data.referral?.submitted_at ?? new Date().toISOString(),
+        match_results: data.match_results ?? [],
+      });
       setSubmitted(true);
     } catch {
       setSubmitError("Network error. Please check your connection and try again.");
@@ -253,13 +267,30 @@ export default function SubmitReferralPage() {
             <span className="w-2 h-2 rounded-full bg-brand-teal flex-shrink-0" />
             You'll be notified when verification is complete.
           </div>
+
+          {/* Activity banner — Day 0 snapshot */}
+          {submitResult && (
+            <div className="w-full max-w-lg">
+              <ReferralActivityBanner
+                submittedAt={submitResult.submitted_at}
+                matches={submitResult.match_results}
+                contactedCount={0}
+              />
+              {submitResult.match_results.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Scoring in progress — match results will appear shortly.
+                </p>
+              )}
+            </div>
+          )}
+
           <button
             onClick={() => {
               setForm(EMPTY_FORM);
               setResumeFile(null);
               setExtraFiles([]);
               setGdprConsent(false);
-
+              setSubmitResult(null);
               setSubmitted(false);
             }}
             className="mt-2 text-sm text-brand-teal font-medium hover:underline"
@@ -307,6 +338,20 @@ export default function SubmitReferralPage() {
                 onChange={handleChange}
                 required
                 placeholder="e.g. EMP-005"
+                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1.5">
+                Your Email <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="email"
+                name="referrerEmail"
+                value={form.referrerEmail}
+                onChange={handleChange}
+                required
+                placeholder="you@company.com"
                 className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
               />
             </div>
