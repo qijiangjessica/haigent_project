@@ -1,6 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addContactAndPersist, getContactsByReferralId } from "@/lib/reference-json-persistence";
+import { addContactAndPersist, getContactsByReferralId, loadFromDisk } from "@/lib/reference-json-persistence";
+import {
+  getReferrals,
+  addReferral, addLiveMatchRecord, addLivePoolEntry,
+  setDecision, rejectReferral, addLiveAuditEvent,
+  setStatusOverride, setScoringWeights, setJobWeightOverride,
+} from "@/lib/reference-store";
+import { sendEmail, appUrl } from "@/lib/email";
+import { candidateContactedReferrer } from "@/lib/email-templates";
+import { OPEN_JOBS } from "@/data/reference/jobs";
 import type { ContactEvent } from "@/types";
+
+function hydrateIfEmpty() {
+  if (getReferrals().length === 0) {
+    try {
+      const snap = loadFromDisk();
+      for (const r of snap.referrals)    addReferral(r);
+      for (const m of snap.matches)      addLiveMatchRecord(m);
+      for (const p of snap.poolEntries)  addLivePoolEntry(p);
+      for (const d of snap.decisions)    setDecision(d);
+      for (const id of snap.rejectedIds) rejectReferral(id);
+      for (const e of snap.auditEvents)  addLiveAuditEvent(e);
+      for (const [k, v] of Object.entries(snap.statusOverrides)) setStatusOverride(k, v);
+      setScoringWeights(snap.scoringWeights);
+      for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
+    } catch { /* no disk data yet */ }
+  }
+}
 
 const VALID_METHODS = ["email", "phone", "linkedin", "other"] as const;
 
@@ -15,6 +41,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    hydrateIfEmpty();
+
     const body = await request.json() as Partial<ContactEvent>;
 
     if (!body.referral_id || !body.posting_id || !body.contact_method || !body.contacted_by) {
@@ -41,6 +69,21 @@ export async function POST(request: NextRequest) {
     };
 
     addContactAndPersist(contact);
+
+    // E3: Notify referrer that their candidate was contacted
+    const referral = getReferrals().find((r) => r.referral_id === body.referral_id);
+    if (referral?.referrer_email) {
+      const job = OPEN_JOBS.find((j) => j.id === body.posting_id);
+      const tmpl = candidateContactedReferrer({
+        referrerName: referral.referrer_name,
+        candidateName: referral.candidate_name,
+        referralId: referral.referral_id,
+        jobTitle: job?.title ?? body.posting_id ?? "Open Role",
+        contactMethod: body.contact_method,
+        referralUrl: appUrl(`/reference/referrals/${referral.referral_id}`),
+      });
+      sendEmail({ ...tmpl, to: referral.referrer_email, notificationType: "candidate_contacted_referrer", referralId: referral.referral_id, toRole: "referrer" }).catch(() => {});
+    }
 
     return NextResponse.json({ success: true, contact });
   } catch (error) {

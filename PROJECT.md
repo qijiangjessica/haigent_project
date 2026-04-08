@@ -96,8 +96,50 @@ AI-powered payroll assistant connected to **Salesforce Agentforce** — Salesfor
 
 **Architecture:** The Next.js API route (`/api/agent`) acts as a proxy to the Salesforce Agent API, managing session state and forwarding messages.
 
-### 6. Reference & Engee *(Coming Soon)*
-Placeholder modules for automated reference checks and employee engagement — not yet implemented.
+### 6. Reference *(Employee Referral Platform)*
+A full-stack employee referral management system — the most feature-complete module in the platform.
+
+**Features:**
+- Referral submission form (employee refers a candidate with resume, skills, job target)
+- Live candidate pipeline with AI or rule-based match scoring against open jobs
+- Recruiter decision workflow: PROCEED / ON_HOLD / NOT_SUITABLE with reason codes
+- Status overrides (matched, on_hold, closed, hired) with automatic referrer notifications
+- Talent pool promotion with experience level, skill tags, and location tags
+- Audit trail for every state change
+- Candidate contact logging per job posting
+- Scoring configuration (global weights: skill, experience, location, seniority) with per-job overrides
+- Manual rescore with AI (Claude Haiku) or static rule-based fallback
+- Weekly stale referral digest (referrals >14 days old with 0 contacts)
+- Notification log — every email send attempt is recorded with status
+
+**Email Notification System (Microsoft 365 SMTP via Nodemailer):**
+
+| ID | Recipient | Trigger |
+|---|---|---|
+| R1 | Recruiter | New referral submitted |
+| R2 | Recruiter | Strong/Partial match found (submit + rescore) |
+| R3 | Recruiter | Candidate promoted to talent pool |
+| R4 | Recruiter | Referral rejected (with reason code) |
+| R5 | Recruiter | Weekly stale referral digest (>14 days, 0 contacts) |
+| A2 | Recruiter | Score improved after rescore (classification upgrade) |
+| E1 | Referrer | Submission confirmation |
+| E2 | Referrer | Best match result |
+| E3 | Referrer | Recruiter contacted their candidate |
+| E4 | Referrer | Decision status change (PROCEED / ON_HOLD / NOT_SUITABLE) |
+| E5 | Referrer | Candidate hired — triggers bonus process |
+| C1 | Candidate | You've been referred |
+| C2 | Candidate | Added to talent pool |
+
+**Architecture:**
+- All referral data persisted to JSON files under `src/data/reference/json/` (no database required)
+- In-memory store (`src/lib/reference-store.ts`) hydrated from disk on each request
+- AI scoring via `claude-haiku-4-5-20251001`; falls back to static rule-based scoring without API key
+- Notification preferences controlled via `src/data/reference/notification-prefs.json` — set any type to `false` to suppress
+- Per-action recruiter email override: promote and decisions API accept optional `recruiter_email` body field
+- MCP email server (`mcp-email-server/`) — standalone MCP tool with `send_email` and `verify_connection` tools
+
+### 7. Engee *(Coming Soon)*
+Placeholder module for employee engagement — not yet implemented.
 
 ---
 

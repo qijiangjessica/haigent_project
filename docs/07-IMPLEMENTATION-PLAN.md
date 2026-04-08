@@ -111,3 +111,101 @@
 | Phase 4 | Large | Full Schedule module (biggest phase) |
 | Phase 5 | Medium | Full Sourcing module |
 | Phase 6 | Small | Placeholder pages, docs, git init |
+| Phase 7 | Large | Reference module — core pipeline + scoring |
+| Phase 8 | Medium | Reference module — email notifications |
+| Phase 9 | Small | Reference module — MCP email server |
+
+---
+
+## Phase 7: Reference Module — Core Pipeline
+
+**Goal:** Fully working employee referral pipeline with submission, scoring, decisions, and pool management.
+
+### Data & Store
+- [x] `src/data/reference/candidates.ts` — seeded candidate pool
+- [x] `src/data/reference/jobs.ts` — open job postings with required skills and experience ranges
+- [x] `src/lib/reference-store.ts` — in-memory store (referrals, matches, pool entries, decisions, audit events, status overrides, scoring weights)
+- [x] `src/lib/reference-json-persistence.ts` — read/write all store state to `src/data/reference/json/`
+- [x] `src/types/index.ts` — shared types: `SubmittedReferral`, `LiveMatchRecord`, `LivePoolEntry`, `RecruiterDecision`, `LiveAuditEvent`, `ContactEvent`, `NotificationLogEntry`
+
+### API Routes
+- [x] `POST /api/reference/submit` — validate, persist referral, run AI/static scoring, return match results
+- [x] `GET /api/reference/records` — list all referrals
+- [x] `GET/PATCH /api/reference/referrals/[id]` — detail + edit with automatic rescore on field change
+- [x] `POST /api/reference/rescore` — re-run scoring for a specific referral
+- [x] `POST/GET /api/reference/decisions` — recruiter decision (PROCEED/ON_HOLD/NOT_SUITABLE)
+- [x] `POST/GET /api/reference/status` — manual status override
+- [x] `POST/GET /api/reference/promote-to-pool` — promote referral to talent pool with level/tags
+- [x] `POST/GET /api/reference/referral-actions` — reject referral with reason code + audit event
+- [x] `POST/GET /api/reference/contacts` — log recruiter contact events per job posting
+- [x] `PATCH /api/reference/contacts/[id]` — update contact status
+- [x] `GET/PUT /api/reference/scoring-config` — global scoring weights
+- [x] `GET/POST /api/reference/job-weights` — per-job weight overrides
+- [x] `GET /api/reference/live-matches` — all match records
+- [x] `POST/GET /api/reference/audit` — audit event append + full trail
+- [x] `POST /api/reference/resume-parse` — Claude AI resume extraction
+
+### Scoring System
+- [x] Static rule-based scoring (skill keyword overlap, experience range, location tokens, seniority bands)
+- [x] AI scoring via `claude-haiku-4-5-20251001` with JSON response parsing
+- [x] Automatic fallback from AI → static on error
+- [x] Weighted average with configurable weights (skill / experience / location / seniority)
+- [x] Per-job weight overrides layered over global config
+
+### UI Pages
+- [x] `/reference` — dashboard with pipeline stats and quick actions
+- [x] `/reference/submit` — referral submission form with resume upload
+- [x] `/reference/candidates` — pipeline view: scoring, bulk decisions, status overrides, promote/reject actions
+- [x] `/reference/candidates/[id]` — individual candidate detail with match breakdown
+- [x] `/reference/referrals/[id]` — referral detail
+- [x] `/reference/referrals/[id]/edit` — edit referral fields
+- [x] `/reference/pool` — talent pool management
+- [x] `/reference/jobs` — open job postings
+- [x] `/reference/scoring-config` — global + per-job weight configuration with manual override
+- [x] `/reference/chat` — AI chat interface
+
+---
+
+## Phase 8: Reference Module — Email Notifications
+
+**Goal:** All recruiter, referrer, and candidate notifications wired to the correct trigger points.
+
+### Infrastructure
+- [x] `src/lib/email.ts` — central `sendEmail()` with SMTP transport, dev-mode logging, Mailpit support, notification preferences check
+- [x] `src/lib/email-templates.ts` — typed HTML email templates for all 14 notification types
+- [x] `src/data/reference/notification-prefs.json` — per-type opt-in/out config (set any type to `false` to suppress)
+- [x] `src/data/reference/json/notification-log.json` — every send attempt logged with status + error
+
+### Recruiter Notifications
+- [x] R1 — New referral received (`submit`)
+- [x] R2 — Strong/Partial match found (`submit` + `rescore`)
+- [x] R3 — Candidate promoted to pool (`promote-to-pool`)
+- [x] R4 — Referral rejected with reason code (`referral-actions`)
+- [x] R5 — Weekly stale referral digest — `POST /api/reference/digest` (cron-callable, `GET` for preview)
+- [x] A2 — Score improved after rescore — fires only when classification rank improves
+
+### Referrer Notifications
+- [x] E1 — Submission confirmation (`submit`)
+- [x] E2 — Best match result (`submit`)
+- [x] E3 — Recruiter contacted candidate (`contacts`)
+- [x] E4 — Decision status change — PROCEED / ON_HOLD / NOT_SUITABLE (`decisions` + `status`)
+- [x] E5 — Candidate hired (`status` when status = `hired`)
+
+### Candidate Notifications
+- [x] C1 — You've been referred (`submit`)
+- [x] C2 — Added to talent pool (`promote-to-pool`)
+
+### Configuration
+- [x] `RECRUITER_EMAIL` env var — default recruiter inbox (uncomment in `.env` to activate)
+- [x] Per-action recruiter email override — `promote-to-pool` and `decisions` accept optional `recruiter_email` body field; promote form UI has "Notify Recruiter" email input
+
+---
+
+## Phase 9: Reference Module — MCP Email Server
+
+**Goal:** Standalone MCP server for email operations, usable from Claude Code.
+
+- [x] `mcp-email-server/src/index.ts` — MCP server with `send_email` and `verify_connection` tools
+- [x] Microsoft 365 SMTP transport via Nodemailer (same config as `email.ts`)
+- [x] Registered in `.claude/settings.local.json` under `mcpServers.email`
+- [x] `verify_connection` confirmed working against `smtp.office365.com:587`

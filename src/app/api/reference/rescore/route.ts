@@ -8,6 +8,8 @@ import {
 } from "@/lib/reference-store";
 import { addMatchesAndPersist } from "@/lib/reference-json-persistence";
 import { OPEN_JOBS, type ReferenceJob } from "@/data/reference/jobs";
+import { sendEmail, appUrl } from "@/lib/email";
+import { matchResultRecruiter, scoreImprovedRecruiter } from "@/lib/email-templates";
 
 // ── Static scoring (mirrors submit route) ───────────────────────────────────
 
@@ -214,10 +216,13 @@ export async function POST(request: NextRequest) {
     // Skills: use overridden list if provided, otherwise fall back to stored skills
     const skills = body.skills ?? referral.skills_claimed ?? [];
 
-    // Determine the run index (how many times has this been scored before)
+    // Capture previous best match before rescoring (for A2 improvement detection)
     const existingMatches = getLiveMatchRecords().filter(
       (m) => m.referral_id === body.referral_id
     );
+    const prevBest = existingMatches.length > 0
+      ? existingMatches.reduce((a, b) => (a.match_score >= b.match_score ? a : b))
+      : null;
     const runIndex = existingMatches.length > 0
       ? Math.max(...existingMatches.map((m) => {
           const match = m.match_id.match(/R(\d+)-/);
@@ -250,6 +255,48 @@ export async function POST(request: NextRequest) {
 
     if (matchResults.length > 0) {
       addMatchesAndPersist(matchResults);
+    }
+
+    const recruiterEmail = process.env.RECRUITER_EMAIL;
+    const referralUrl = appUrl(`/reference/referrals/${referral.referral_id}`);
+
+    // R2: Notify recruiter of strong/partial matches after rescore
+    const nonNoMatches = matchResults.filter((m) => m.classification !== "No Match");
+    if (recruiterEmail && nonNoMatches.length > 0) {
+      const tmpl = matchResultRecruiter({
+        candidateName: referral.candidate_name,
+        referralId: referral.referral_id,
+        referrerName: referral.referrer_name,
+        matches: nonNoMatches.map((m) => ({
+          jobTitle: OPEN_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id,
+          score: m.match_score,
+          classification: m.classification,
+        })),
+        referralUrl,
+      });
+      sendEmail({ ...tmpl, to: recruiterEmail, notificationType: "match_result_recruiter", referralId: referral.referral_id, toRole: "recruiter" }).catch(() => {});
+    }
+
+    // A2: Notify recruiter if classification improved vs previous best
+    const RANK = { "No Match": 0, "Partial Match": 1, "Strong Match": 2 };
+    const newBest = matchResults.length > 0
+      ? matchResults.reduce((a, b) => (a.match_score >= b.match_score ? a : b))
+      : null;
+    if (
+      recruiterEmail && prevBest && newBest &&
+      (RANK[newBest.classification] > RANK[prevBest.classification])
+    ) {
+      const tmpl = scoreImprovedRecruiter({
+        candidateName: referral.candidate_name,
+        referralId: referral.referral_id,
+        referrerName: referral.referrer_name,
+        jobTitle: OPEN_JOBS.find((j) => j.id === newBest.posting_id)?.title ?? newBest.posting_id,
+        previousClassification: prevBest.classification,
+        newClassification: newBest.classification,
+        newScore: newBest.match_score,
+        referralUrl,
+      });
+      sendEmail({ ...tmpl, to: recruiterEmail, notificationType: "score_improved_recruiter", referralId: referral.referral_id, toRole: "recruiter" }).catch(() => {});
     }
 
     return NextResponse.json({

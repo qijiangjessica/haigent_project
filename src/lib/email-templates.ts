@@ -339,7 +339,213 @@ export function candidateReferred(d: CandidateReferredData): TemplateResult {
   return { subject, html: wrap(body) };
 }
 
-// ── 8. Status change — referrer notification ─────────────────────────────────
+// ── 8. Rejection confirmation — recruiter ────────────────────────────────────
+
+export interface RejectionConfirmationRecruiterData {
+  candidateName: string;
+  referralId: string;
+  referrerName: string;
+  reasonCode?: string;
+  referralUrl: string;
+}
+
+export function rejectionConfirmationRecruiter(d: RejectionConfirmationRecruiterData): TemplateResult {
+  const subject = `Referral closed — ${d.candidateName} marked Not Suitable`;
+
+  const body = `
+    ${heading("Referral Closed")}
+    ${subtext(`The following referral has been marked as Not Suitable and removed from the active pipeline.`)}
+    ${infoTable(
+      infoRow("Referral ID",  d.referralId) +
+      infoRow("Candidate",    d.candidateName) +
+      infoRow("Referred by",  d.referrerName) +
+      (d.reasonCode ? infoRow("Reason Code", d.reasonCode) : "")
+    )}
+    <p style="margin:16px 0 0;font-size:13px;color:${TEXT_MUTED};line-height:1.6;">
+      No further action is required. The referrer will be notified separately.
+    </p>
+    ${ctaButton("View Referral", d.referralUrl)}
+  `;
+
+  return { subject, html: wrap(body) };
+}
+
+// ── 9. Stale referral digest — recruiter ─────────────────────────────────────
+
+export interface StaleReferralDigestData {
+  staleReferrals: Array<{
+    referralId: string;
+    candidateName: string;
+    referrerName: string;
+    submittedAt: string;
+    daysOld: number;
+    referralUrl: string;
+  }>;
+}
+
+export function staleReferralDigest(d: StaleReferralDigestData): TemplateResult {
+  const count = d.staleReferrals.length;
+  const subject = `[Weekly Digest] ${count} referral${count !== 1 ? "s" : ""} need${count === 1 ? "s" : ""} attention`;
+
+  const rows = d.staleReferrals.map((r) => `
+    <tr>
+      <td style="padding:10px 0;font-size:13px;color:${TEXT_MAIN};border-bottom:1px solid ${BORDER};">
+        <a href="${r.referralUrl}" style="color:${BRAND_TEAL};text-decoration:none;font-weight:500;">${r.candidateName}</a>
+      </td>
+      <td style="padding:10px 0;font-size:13px;color:${TEXT_MUTED};border-bottom:1px solid ${BORDER};">${r.referrerName}</td>
+      <td style="padding:10px 0;font-size:13px;color:${TEXT_MAIN};border-bottom:1px solid ${BORDER};">${r.submittedAt}</td>
+      <td style="padding:10px 0;border-bottom:1px solid ${BORDER};">
+        ${badge(`${r.daysOld}d`, "#b45309", "#fef3c7")}
+      </td>
+    </tr>`).join("");
+
+  const body = `
+    ${heading("Weekly Referral Digest", BRAND_GOLD)}
+    ${subtext(`The following ${count} referral${count !== 1 ? "s are" : " is"} older than 14 days with no candidate contact recorded.`)}
+    <table cellpadding="0" cellspacing="0" style="width:100%;margin:16px 0;">
+      <tr>
+        <th style="padding:8px 0;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:${TEXT_MUTED};text-align:left;border-bottom:2px solid ${BORDER};">Candidate</th>
+        <th style="padding:8px 0;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:${TEXT_MUTED};text-align:left;border-bottom:2px solid ${BORDER};">Referred by</th>
+        <th style="padding:8px 0;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:${TEXT_MUTED};text-align:left;border-bottom:2px solid ${BORDER};">Submitted</th>
+        <th style="padding:8px 0;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:${TEXT_MUTED};text-align:left;border-bottom:2px solid ${BORDER};">Age</th>
+      </tr>
+      ${rows}
+    </table>
+    <p style="margin:16px 0 0;font-size:13px;color:${TEXT_MUTED};line-height:1.6;">
+      Please review these referrals and initiate contact or update their status.
+    </p>
+  `;
+
+  return { subject, html: wrap(body) };
+}
+
+// ── 10. Candidate promoted to pool — candidate notification ──────────────────
+
+export interface CandidatePromotedToPoolData {
+  candidateName: string;
+  referrerName: string;
+  experienceLevel: string;
+}
+
+export function candidatePromotedToPool(d: CandidatePromotedToPoolData): TemplateResult {
+  const subject = `You've been added to our active talent pipeline`;
+
+  const body = `
+    ${heading("You're In Our Talent Pipeline!", BRAND_TEAL)}
+    ${subtext(`Hi ${d.candidateName}, great news from our recruiting team.`)}
+    <p style="margin:0 0 16px;font-size:14px;color:${TEXT_MAIN};line-height:1.6;">
+      Thanks to a referral from <strong>${d.referrerName}</strong>, you've been added to our
+      active talent pool as a <strong>${d.experienceLevel}</strong>-level candidate.
+      Our team will reach out when a matching role becomes available.
+    </p>
+    ${divider()}
+    <p style="margin:0;font-size:13px;color:${TEXT_MUTED};line-height:1.6;">
+      No action is required from you. We'll be in touch when the right opportunity arises.
+    </p>
+  `;
+
+  return { subject, html: wrap(body) };
+}
+
+// ── 11. Candidate contacted — referrer notification ──────────────────────────
+
+export interface CandidateContactedReferrerData {
+  referrerName: string;
+  candidateName: string;
+  referralId: string;
+  jobTitle: string;
+  contactMethod: string;
+  referralUrl: string;
+}
+
+export function candidateContactedReferrer(d: CandidateContactedReferrerData): TemplateResult {
+  const subject = `Update: a recruiter has reached out to ${d.candidateName}`;
+
+  const body = `
+    ${heading("Recruiter Outreach Update", BRAND_CYAN)}
+    ${subtext(`Hi ${d.referrerName}, we have an update on your referral.`)}
+    <p style="margin:0 0 16px;font-size:14px;color:${TEXT_MAIN};line-height:1.6;">
+      A recruiter has reached out to <strong>${d.candidateName}</strong> regarding the
+      <strong>${d.jobTitle}</strong> position. We'll keep you posted as things progress.
+    </p>
+    ${infoTable(
+      infoRow("Candidate",       d.candidateName) +
+      infoRow("Referral ID",     d.referralId) +
+      infoRow("Role",            d.jobTitle) +
+      infoRow("Contact method",  d.contactMethod)
+    )}
+    ${ctaButton("View Referral", d.referralUrl)}
+  `;
+
+  return { subject, html: wrap(body) };
+}
+
+// ── 11. Candidate hired — referrer notification ───────────────────────────────
+
+export interface CandidateHiredReferrerData {
+  referrerName: string;
+  candidateName: string;
+  referralId: string;
+  referralUrl: string;
+}
+
+export function candidateHiredReferrer(d: CandidateHiredReferrerData): TemplateResult {
+  const subject = `Congratulations — ${d.candidateName} has been hired!`;
+
+  const body = `
+    ${heading("Great News — Hire Confirmed!", BRAND_GREEN)}
+    ${subtext(`Hi ${d.referrerName}, we have fantastic news about your referral.`)}
+    <p style="margin:0 0 16px;font-size:14px;color:${TEXT_MAIN};line-height:1.6;">
+      <strong>${d.candidateName}</strong> has been officially hired! Your referral made a real
+      difference — thank you for helping us find great talent.
+    </p>
+    <p style="margin:0 0 20px;padding:14px 16px;background:#dcfce7;border-left:3px solid ${BRAND_GREEN};border-radius:4px;font-size:13px;color:#166534;font-weight:500;">
+      Our HR team will be in touch shortly to initiate the referral bonus process.
+    </p>
+    ${infoTable(
+      infoRow("Candidate",   d.candidateName) +
+      infoRow("Referral ID", d.referralId)
+    )}
+    ${ctaButton("View Referral", d.referralUrl)}
+  `;
+
+  return { subject, html: wrap(body) };
+}
+
+// ── 12. Score improved — recruiter notification ───────────────────────────────
+
+export interface ScoreImprovedRecruiterData {
+  candidateName: string;
+  referralId: string;
+  referrerName: string;
+  jobTitle: string;
+  previousClassification: string;
+  newClassification: string;
+  newScore: number;
+  referralUrl: string;
+}
+
+export function scoreImprovedRecruiter(d: ScoreImprovedRecruiterData): TemplateResult {
+  const subject = `Score improved — ${d.candidateName}: ${d.previousClassification} → ${d.newClassification}`;
+
+  const body = `
+    ${heading("Candidate Score Improved", BRAND_GREEN)}
+    ${subtext(`A re-score has improved the match classification for one of your referrals.`)}
+    ${infoTable(
+      infoRow("Candidate",   d.candidateName) +
+      infoRow("Referral ID", d.referralId) +
+      infoRow("Referred by", d.referrerName) +
+      infoRow("Role",        d.jobTitle) +
+      infoRow("Previous",    badge(d.previousClassification, TEXT_MUTED, "#f3f4f6")) +
+      infoRow("New result",  `${badge(d.newClassification, BRAND_GREEN, "#dcfce7")} &nbsp; <strong>${d.newScore}/100</strong>`)
+    )}
+    ${ctaButton("Review Candidate", d.referralUrl)}
+  `;
+
+  return { subject, html: wrap(body) };
+}
+
+// ── 13. Status change — referrer notification ─────────────────────────────────
 
 export interface StatusChangeReferrerData {
   referrerName: string;

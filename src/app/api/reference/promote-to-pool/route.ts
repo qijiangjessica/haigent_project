@@ -6,6 +6,8 @@ import {
   type LivePoolEntry,
 } from "@/lib/reference-store";
 import { addPoolEntryAndPersist, addAuditEventAndPersist } from "@/lib/reference-json-persistence";
+import { sendEmail, appUrl } from "@/lib/email";
+import { promotedToPoolRecruiter, promotedToPoolReferrer, candidatePromotedToPool } from "@/lib/email-templates";
 
 const VALID_EXPERIENCE_LEVELS = ["Junior", "Mid", "Senior", "Lead"] as const;
 
@@ -24,6 +26,7 @@ export async function POST(request: NextRequest) {
       preferred_role_tags,
       location_tags,
       promoted_by = "Recruiter",
+      recruiter_email,
     } = body;
 
     if (!referral_id || !experience_level) {
@@ -119,6 +122,44 @@ export async function POST(request: NextRequest) {
       after_state: "in_pool",
       notes: `Promoted to pool as ${entry.pool_id} · Level: ${experience_level}`,
     });
+
+    // R3: Notify recruiter of pool promotion (prefer per-request email over env var)
+    const recruiterEmail = (recruiter_email as string | undefined) || process.env.RECRUITER_EMAIL;
+    const referralUrl = appUrl(`/reference/referrals/${referral_id}`);
+    if (recruiterEmail) {
+      const tmpl = promotedToPoolRecruiter({
+        candidateName: referral.candidate_name,
+        referralId: referral_id,
+        poolId: entry.pool_id,
+        experienceLevel: experience_level,
+        skillTags: resolvedSkillTags,
+        promotedBy: promoted_by,
+        referralUrl,
+      });
+      sendEmail({ ...tmpl, to: recruiterEmail, notificationType: "promoted_to_pool_recruiter", referralId: referral_id, toRole: "recruiter" }).catch(() => {});
+    }
+
+    // Also notify referrer their candidate made the pool
+    if (referral.referrer_email) {
+      const tmpl = promotedToPoolReferrer({
+        referrerName: referral.referrer_name,
+        candidateName: referral.candidate_name,
+        poolId: entry.pool_id,
+        experienceLevel: experience_level,
+        referralUrl,
+      });
+      sendEmail({ ...tmpl, to: referral.referrer_email, notificationType: "promoted_to_pool_referrer", referralId: referral_id, toRole: "referrer" }).catch(() => {});
+    }
+
+    // C2: Notify candidate they've been added to the active talent pool
+    if (referral.candidate_email) {
+      const tmpl = candidatePromotedToPool({
+        candidateName: referral.candidate_name,
+        referrerName: referral.referrer_name,
+        experienceLevel: experience_level,
+      });
+      sendEmail({ ...tmpl, to: referral.candidate_email, notificationType: "candidate_promoted_to_pool", referralId: referral_id, toRole: "candidate" }).catch(() => {});
+    }
 
     return NextResponse.json({
       success: true,

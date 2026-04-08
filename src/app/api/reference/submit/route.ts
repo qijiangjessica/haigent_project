@@ -15,6 +15,8 @@ import {
   newReferralRecruiter,
   submissionConfirmationReferrer,
   candidateReferred,
+  matchResultRecruiter,
+  matchResultReferrer,
 } from "@/lib/email-templates";
 
 function generateReferralId(): string {
@@ -345,6 +347,23 @@ export async function POST(request: NextRequest) {
         referralUrl,
       });
       sendEmail({ ...tmpl, to: recruiterEmail, notificationType: "new_referral_recruiter", referralId: referral.referral_id, toRole: "recruiter" }).catch(() => {});
+
+      // R2: Send separate match results email if any strong/partial matches
+      const nonNoMatches = matchResults.filter((m) => m.classification !== "No Match");
+      if (nonNoMatches.length > 0) {
+        const matchTmpl = matchResultRecruiter({
+          candidateName: referral.candidate_name,
+          referralId: referral.referral_id,
+          referrerName: referral.referrer_name,
+          matches: nonNoMatches.map((m) => ({
+            jobTitle: OPEN_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id,
+            score: m.match_score,
+            classification: m.classification,
+          })),
+          referralUrl,
+        });
+        sendEmail({ ...matchTmpl, to: recruiterEmail, notificationType: "match_result_recruiter", referralId: referral.referral_id, toRole: "recruiter" }).catch(() => {});
+      }
     }
 
     // E1: Send submission confirmation to referrer
@@ -357,6 +376,20 @@ export async function POST(request: NextRequest) {
         referralUrl,
       });
       sendEmail({ ...tmpl, to: referral.referrer_email, notificationType: "submission_confirmation_referrer", referralId: referral.referral_id, toRole: "referrer" }).catch(() => {});
+    }
+
+    // E2: Send best match result to referrer when matches exist
+    if (referral.referrer_email && bestMatch) {
+      const tmpl = matchResultReferrer({
+        referrerName: referral.referrer_name,
+        candidateName: referral.candidate_name,
+        referralId: referral.referral_id,
+        jobTitle: OPEN_JOBS.find((j) => j.id === bestMatch.posting_id)?.title ?? bestMatch.posting_id,
+        matchScore: bestMatch.match_score,
+        classification: bestMatch.classification,
+        referralUrl,
+      });
+      sendEmail({ ...tmpl, to: referral.referrer_email, notificationType: "match_result_referrer", referralId: referral.referral_id, toRole: "referrer" }).catch(() => {});
     }
 
     // C1: Notify the candidate they were referred

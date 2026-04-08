@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   try {
     hydrateIfEmpty();
 
-    const body = await request.json() as Partial<RecruiterDecision>;
+    const body = await request.json() as Partial<RecruiterDecision> & { recruiter_email?: string };
 
     if (!body.candidate_id || !body.decision) {
       return NextResponse.json(
@@ -60,6 +60,10 @@ export async function POST(request: NextRequest) {
     setDecisionAndPersist(decision);
 
     // E4: Notify referrer of decision change (submitted referrals only)
+    // recruiter_email from request takes precedence over RECRUITER_EMAIL env var (A3)
+    const recruiterEmail = body.recruiter_email || process.env.RECRUITER_EMAIL;
+    void recruiterEmail; // available for future per-decision recruiter notifications
+
     const referral = getReferrals().find((r) => r.referral_id === body.candidate_id);
     if (referral?.referrer_email) {
       const tmpl = statusChangeReferrer({

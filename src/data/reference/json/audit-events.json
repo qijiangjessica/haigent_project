@@ -34,5 +34,29 @@
     "before_state": "pending_review",
     "after_state": "in_pool",
     "notes": "Promoted to pool as LPOOL-X55YI · Level: Mid"
+  },
+  {
+    "event_id": "EVT-PROMO-1775664386397",
+    "timestamp": "2026-04-08T16:06:26.397Z",
+    "actor": "Recruiter",
+    "actor_id": "Recruiter",
+    "event_type": "PoolPromotion",
+    "entity_type": "referral",
+    "entity_id": "REF-20260408-U4JK",
+    "before_state": "pending_review",
+    "after_state": "in_pool",
+    "notes": "Promoted to pool as LPOOL-XGMWV · Level: Junior"
+  },
+  {
+    "event_id": "EVT-PROMO-1775667482519",
+    "timestamp": "2026-04-08T16:58:02.519Z",
+    "actor": "Recruiter",
+    "actor_id": "Recruiter",
+    "event_type": "PoolPromotion",
+    "entity_type": "referral",
+    "entity_id": "REF-20260408-53LN",
+    "before_state": "pending_review",
+    "after_state": "in_pool",
+    "notes": "Promoted to pool as LPOOL-U72EP · Level: Mid"
   }
 ]

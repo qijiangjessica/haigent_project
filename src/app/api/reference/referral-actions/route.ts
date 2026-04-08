@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getReferrals, getRejectedReferralIds } from "@/lib/reference-store";
 import { rejectReferralAndPersist, addAuditEventAndPersist } from "@/lib/reference-json-persistence";
+import { sendEmail, appUrl } from "@/lib/email";
+import { rejectionConfirmationRecruiter } from "@/lib/email-templates";
 
 export async function GET() {
   return NextResponse.json({ rejected_ids: getRejectedReferralIds() });
@@ -37,6 +39,19 @@ export async function POST(request: NextRequest) {
       after_state: "not_suitable",
       notes: reason_code ? `Not Suitable · ${reason_code}` : "Not Suitable",
     });
+
+    // R4: Notify recruiter of rejection with reason code
+    const recruiterEmail = process.env.RECRUITER_EMAIL;
+    if (recruiterEmail) {
+      const tmpl = rejectionConfirmationRecruiter({
+        candidateName: referral.candidate_name,
+        referralId: referral_id,
+        referrerName: referral.referrer_name,
+        reasonCode: reason_code ?? undefined,
+        referralUrl: appUrl(`/reference/referrals/${referral_id}`),
+      });
+      sendEmail({ ...tmpl, to: recruiterEmail, notificationType: "rejection_confirmation_recruiter", referralId: referral_id, toRole: "recruiter" }).catch(() => {});
+    }
 
     return NextResponse.json({ success: true, referral_id });
   } catch (error) {

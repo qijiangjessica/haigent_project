@@ -64,5 +64,82 @@
     "subject": "Your referral for Alex Janes has been received",
     "status": "sent",
     "error_message": null
+  },
+  {
+    "log_id": "LOG-1775664233812-A9NL",
+    "sent_at": "2026-04-08T16:03:53.812Z",
+    "notification_type": "new_referral_recruiter",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "recruiter",
+    "referral_id": "REF-20260408-U4JK",
+    "subject": "New referral submitted: Alex Janes",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775664244000-LF8C",
+    "sent_at": "2026-04-08T16:04:04.000Z",
+    "notification_type": "submission_confirmation_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260408-U4JK",
+    "subject": "Your referral for Alex Janes has been received",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775664247423-80C8",
+    "sent_at": "2026-04-08T16:04:07.423Z",
+    "notification_type": "candidate_referred",
+    "to_email": "alex.jane@gmails.com",
+    "to_role": "candidate",
+    "referral_id": "REF-20260408-U4JK",
+    "subject": "You've been referred for a Open Pool role at HaiGent",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775665174334-8RFF",
+    "sent_at": "2026-04-08T16:19:34.334Z",
+    "notification_type": "submission_confirmation_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260408-53LN",
+    "subject": "Your referral for Alex Jane has been received",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775665175333-36A8",
+    "sent_at": "2026-04-08T16:19:35.333Z",
+    "notification_type": "candidate_referred",
+    "to_email": "alex.jane@gmail.com",
+    "to_role": "candidate",
+    "referral_id": "REF-20260408-53LN",
+    "subject": "You've been referred for a Open Pool role at HaiGent",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775667491219-XS82",
+    "sent_at": "2026-04-08T16:58:11.219Z",
+    "notification_type": "promoted_to_pool_recruiter",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "recruiter",
+    "referral_id": "REF-20260408-53LN",
+    "subject": "Alex Jane promoted to talent pool — LPOOL-U72EP",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775667501983-IZ9A",
+    "sent_at": "2026-04-08T16:58:21.983Z",
+    "notification_type": "promoted_to_pool_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260408-53LN",
+    "subject": "Alex Jane has been added to the talent pool",
+    "status": "sent",
+    "error_message": null
   }
 ]

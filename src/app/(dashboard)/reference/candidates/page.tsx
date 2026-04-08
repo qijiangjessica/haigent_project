@@ -147,6 +147,7 @@ export default function CandidatesPage() {
   const [promoteLocations, setPromoteLocations] = useState("");
   const [promotingLoading, setPromotingLoading] = useState(false);
   const [promoteError, setPromoteError] = useState<string | null>(null);
+  const [promoteRecruiterEmail, setPromoteRecruiterEmail] = useState("");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
 
   function toggleLiveScore(referralId: string) {
@@ -161,6 +162,7 @@ export default function CandidatesPage() {
     setActivePromoteId(referralId);
     setPromoteExpLevel("Mid");
     setPromoteRoles("");
+    setPromoteRecruiterEmail("");
     setPromoteSkills("");
     setPromoteLocations(defaultLocation);
     setPromoteError(null);
@@ -179,6 +181,7 @@ export default function CandidatesPage() {
           preferred_role_tags: promoteRoles.split(",").map((s) => s.trim()).filter(Boolean),
           location_tags: promoteLocations.split(",").map((s) => s.trim()).filter(Boolean),
           skill_tags: promoteSkills.split(",").map((s) => s.trim()).filter(Boolean),
+          ...(promoteRecruiterEmail ? { recruiter_email: promoteRecruiterEmail } : {}),
         }),
       });
       const data = await res.json();
@@ -1371,6 +1374,18 @@ export default function CandidatesPage() {
                                 type="text"
                                 value={promoteLocations}
                                 onChange={(e) => setPromoteLocations(e.target.value)}
+                                className="w-full bg-white rounded-lg px-3 py-1.5 text-sm border border-border focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-muted-foreground block mb-1">
+                                Notify Recruiter <span className="opacity-50">(email — overrides default)</span>
+                              </label>
+                              <input
+                                type="email"
+                                value={promoteRecruiterEmail}
+                                onChange={(e) => setPromoteRecruiterEmail(e.target.value)}
+                                placeholder="recruiter@company.com"
                                 className="w-full bg-white rounded-lg px-3 py-1.5 text-sm border border-border focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
                               />
                             </div>

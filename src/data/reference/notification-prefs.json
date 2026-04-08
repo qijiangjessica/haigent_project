@@ -1,0 +1,17 @@
+{
+  "_comment": "Set any notification type to false to suppress it globally. Restart is not required — the file is read on each send.",
+  "new_referral_recruiter":           true,
+  "match_result_recruiter":           true,
+  "score_improved_recruiter":         true,
+  "promoted_to_pool_recruiter":       true,
+  "rejection_confirmation_recruiter": true,
+  "stale_referral_digest":            true,
+  "submission_confirmation_referrer": true,
+  "match_result_referrer":            true,
+  "candidate_contacted_referrer":     true,
+  "status_change_referrer":           true,
+  "candidate_hired_referrer":         true,
+  "promoted_to_pool_referrer":        true,
+  "candidate_referred":               true,
+  "candidate_promoted_to_pool":       true
+}
