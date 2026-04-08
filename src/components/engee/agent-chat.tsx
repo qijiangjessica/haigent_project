@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, User, Loader2, RotateCcw, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
+type MessageParam = { role: "user" | "assistant"; content: string | unknown[] };
 
 interface DisplayMessage {
   role: "user" | "assistant";

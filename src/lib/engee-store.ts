@@ -27,6 +27,9 @@ export interface SurveyRecord {
   preferred_platform: "teams" | "slack";
   preferred_meeting_time: "morning" | "afternoon" | "flexible";
   submitted_at: string;
+  notes: string[];
+  attrition_flagged: boolean;
+  attrition_reason?: string;
 }
 
 export interface MentorRecord {
@@ -45,12 +48,14 @@ export interface MentorRecord {
 const surveys = new Map<string, SurveyRecord>();
 
 export function saveSurvey(
-  data: Omit<SurveyRecord, "id" | "submitted_at">
+  data: Omit<SurveyRecord, "id" | "submitted_at" | "notes" | "attrition_flagged" | "attrition_reason">
 ): SurveyRecord {
   const record: SurveyRecord = {
     ...data,
     id: `survey_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     submitted_at: new Date().toISOString(),
+    notes: [],
+    attrition_flagged: false,
   };
   // Key by employee name (lowercase) so lookups are easy
   surveys.set(record.employee_name.toLowerCase(), record);
@@ -78,70 +83,95 @@ export function deleteSurvey(employeeName: string): boolean {
   return surveys.delete(employeeName.toLowerCase());
 }
 
+export function addNoteToSurvey(employeeName: string, note: string): boolean {
+  const record = getSurveyByEmployee(employeeName);
+  if (!record) return false;
+  record.notes.push(`[${new Date().toISOString().split("T")[0]}] ${note}`);
+  surveys.set(record.employee_name.toLowerCase(), record);
+  return true;
+}
+
+export function flagAttritionRisk(employeeName: string, reason: string): boolean {
+  const record = getSurveyByEmployee(employeeName);
+  if (!record) return false;
+  record.attrition_flagged = true;
+  record.attrition_reason = reason;
+  record.notes.push(`[ATTRITION RISK ${new Date().toISOString().split("T")[0]}] ${reason}`);
+  surveys.set(record.employee_name.toLowerCase(), record);
+  return true;
+}
+
 // ── Mentor store (seed data — replace with DB query later) ───────────────────
 
 export const MENTORS: MentorRecord[] = [
   {
     id: "m1",
-    name: "Alex Chen",
+    name: "Sahib Badwal",
     title: "Senior Software Engineer",
     department: "Engineering",
-    email: "alex.chen@company.com",
-    slack_id: "U_ALEX",
+    email: "gursahib.badwal@procogia.com",
+    slack_id: "U_SAHIB",
+    teams_id: "gursahib.badwal@procogia.com",
     bio: "10 years building distributed systems. Loves mentoring on system design and career growth.",
   },
   {
     id: "m2",
-    name: "Jordan Lee",
+    name: "Siddharth Maheshwari",
     title: "Data Science Lead",
     department: "Data & Analytics",
-    email: "jordan.lee@company.com",
-    slack_id: "U_JORDAN",
+    email: "siddharth@procogia.com",
+    slack_id: "U_SIDDHARTH",
+    teams_id: "siddharth@procogia.com",
     bio: "ML practitioner focused on NLP and recommendation systems. Happy to chat about the DS career path.",
   },
   {
     id: "m3",
-    name: "Sam Rivera",
+    name: "Love Patel",
     title: "Senior Product Manager",
     department: "Product",
-    email: "sam.rivera@company.com",
-    slack_id: "U_SAM",
+    email: "lovekumar.patel@procogia.com",
+    slack_id: "U_LOVE",
+    teams_id: "lovekumar.patel@procogia.com",
     bio: "Former engineer turned PM. Passionate about 0→1 products and cross-functional collaboration.",
   },
   {
     id: "m4",
-    name: "Taylor Kim",
+    name: "Rose Vermazen",
     title: "Marketing Director",
     department: "Marketing",
-    email: "taylor.kim@company.com",
-    slack_id: "U_TAYLOR",
+    email: "rose.vermazen@procogia.com",
+    slack_id: "U_ROSE",
+    teams_id: "rose.vermazen@procogia.com",
     bio: "Brand storytelling and demand gen. Excited to mentor on GTM strategy and creative campaigns.",
   },
   {
     id: "m5",
-    name: "Morgan Patel",
+    name: "Swati Sood",
     title: "People Operations Lead",
     department: "HR",
-    email: "morgan.patel@company.com",
-    slack_id: "U_MORGAN",
+    email: "swati@procogia.com",
+    slack_id: "U_SWATI",
+    teams_id: "swati@procogia.com",
     bio: "HR generalist with a focus on new hire experience and culture. Always happy to connect!",
   },
   {
     id: "m6",
-    name: "Casey Nguyen",
+    name: "Videesh Guduru",
     title: "DevOps Engineer",
     department: "Engineering",
-    email: "casey.nguyen@company.com",
-    slack_id: "U_CASEY",
+    email: "videesh.guduru@procogia.com",
+    slack_id: "U_VIDEESH",
+    teams_id: "videesh.guduru@procogia.com",
     bio: "Infrastructure and CI/CD specialist. Can help you get up to speed on our deployment pipeline fast.",
   },
   {
     id: "m7",
-    name: "Riley Thompson",
+    name: "Oisin Bates",
     title: "UX Lead",
     department: "Design",
-    email: "riley.thompson@company.com",
-    slack_id: "U_RILEY",
+    email: "oisin@procogia.com",
+    slack_id: "U_OISIN",
+    teams_id: "oisin@procogia.com",
     bio: "User research and design systems. Love pairing with new designers and engineers on product craft.",
   },
   {
