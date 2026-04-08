@@ -173,7 +173,7 @@ export function OnboardingDashboard() {
         )}
 
         {records.length > 0 && (
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-border max-h-64 overflow-y-auto">
             {records.map((record) => {
               const tasks = [
                 { key: "equipment_assigned", label: "Equipment", val: record.equipment_assigned },

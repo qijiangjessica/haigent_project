@@ -109,9 +109,9 @@ export function BenefitsDashboard() {
             <h3 className="font-semibold text-sm text-foreground">Available Benefit Plans</h3>
             {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
           </div>
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-border max-h-64 overflow-y-auto">
             {benefitTypes.map((bt) => (
-              <div key={bt.sys_id} className="flex items-center justify-between px-5 py-3">
+              <div key={bt.sys_id} className="flex items-center justify-between px-5 py-2">
                 <div>
                   <p className="text-sm font-medium text-foreground">
                     {bt.benefit_name ?? bt.name ?? "—"}
