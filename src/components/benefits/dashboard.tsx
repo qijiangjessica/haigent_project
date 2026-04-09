@@ -6,36 +6,27 @@ import { HeroBanner } from "@/components/shared/hero-banner";
 import { StatsCard } from "@/components/shared/stats-card";
 
 interface BenefitType {
-  sys_id: string;
-  benefit_name?: string;
-  name?: string;
-  benefit_category?: string;
-  category?: string;
-  employee_monthly_cost?: string;
-  employer_monthly_cost?: string;
-  coverage_amount?: string;
-  is_active?: string | boolean;
+  id: string;
+  benefit_name: string;
+  category: string;
+  cost: string;
+  employer_contribution: string;
+  provider: string;
 }
 
-interface Enrollment {
-  sys_id: string;
-  employee?: { display_value?: string; value?: string } | string;
-  benefit_type?: { display_value?: string; value?: string } | string;
-  enrollment_status?: string;
-  coverage_level?: string;
-  employee_premium?: string;
-  effective_date?: string;
-}
-
-function displayVal(field: { display_value?: string; value?: string } | string | undefined): string {
-  if (!field) return "—";
-  if (typeof field === "string") return field;
-  return field.display_value ?? field.value ?? "—";
+interface BenefitInquiry {
+  id: string;
+  employee_name: string;
+  benefit_category: string | null;
+  status: string;
+  inquiry_type: string;
+  description: string;
+  inquiry_date: string;
 }
 
 export function BenefitsDashboard() {
   const [benefitTypes, setBenefitTypes] = useState<BenefitType[]>([]);
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [inquiries, setInquiries] = useState<BenefitInquiry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,15 +37,15 @@ export function BenefitsDashboard() {
         if (data.error) setError(data.error);
         else {
           setBenefitTypes(data.benefitTypes ?? []);
-          setEnrollments(data.enrollments ?? []);
+          setInquiries(data.inquiries ?? []);
         }
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);
 
-  const enrolled = enrollments.filter((e) => e.enrollment_status === "enrolled").length;
-  const pending = enrollments.filter((e) => e.enrollment_status === "pending").length;
+  const openInquiries = inquiries.filter((i) => i.status === "open" || i.status === "in_progress").length;
+  const resolved = inquiries.filter((i) => i.status === "resolved").length;
   const activeTypes = benefitTypes.length;
 
   return (
@@ -76,20 +67,20 @@ export function BenefitsDashboard() {
           icon={<Heart className="h-5 w-5 text-brand-coral" />}
         />
         <StatsCard
-          label="Enrolled"
-          value={loading ? "—" : enrolled}
+          label="Open Inquiries"
+          value={loading ? "—" : openInquiries}
           bgColor="bg-brand-cyan"
-          icon={<CheckCircle2 className="h-5 w-5 text-brand-cyan" />}
+          icon={<Clock className="h-5 w-5 text-brand-cyan" />}
         />
         <StatsCard
-          label="Pending Enrollment"
-          value={loading ? "—" : pending}
+          label="Resolved"
+          value={loading ? "—" : resolved}
           bgColor="bg-brand-lime"
-          icon={<Clock className="h-5 w-5 text-brand-lime" />}
+          icon={<CheckCircle2 className="h-5 w-5 text-brand-lime" />}
         />
         <StatsCard
-          label="Total Enrollments"
-          value={loading ? "—" : enrollments.length}
+          label="Total Inquiries"
+          value={loading ? "—" : inquiries.length}
           bgColor="bg-brand-yellow"
           icon={<Users className="h-5 w-5 text-brand-yellow" />}
         />
@@ -111,26 +102,24 @@ export function BenefitsDashboard() {
           </div>
           <div className="divide-y divide-border max-h-64 overflow-y-auto">
             {benefitTypes.map((bt) => (
-              <div key={bt.sys_id} className="flex items-center justify-between px-5 py-2">
+              <div key={bt.id} className="flex items-center justify-between px-5 py-2">
                 <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {bt.benefit_name ?? bt.name ?? "—"}
-                  </p>
+                  <p className="text-sm font-medium text-foreground">{bt.benefit_name}</p>
                   <p className="text-xs text-muted-foreground capitalize">
-                    {bt.benefit_category ?? bt.category ?? ""}
+                    {bt.category?.replace(/_/g, " ")} · {bt.provider}
                   </p>
                 </div>
                 <div className="text-right">
-                  {bt.employee_monthly_cost && (
+                  {bt.cost !== "0" && (
                     <p className="text-sm font-medium text-foreground">
-                      ${bt.employee_monthly_cost}<span className="text-xs text-muted-foreground">/mo</span>
+                      ${bt.cost}<span className="text-xs text-muted-foreground">/mo</span>
                     </p>
                   )}
-                  {bt.employer_monthly_cost && (
-                    <p className="text-xs text-muted-foreground">
-                      Employer: ${bt.employer_monthly_cost}/mo
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Employer: {bt.employer_contribution.startsWith("Up to") || bt.employer_contribution === "N/A" || bt.employer_contribution === "100%" || bt.employer_contribution.includes("tax")
+                      ? bt.employer_contribution
+                      : `$${bt.employer_contribution}/mo`}
+                  </p>
                 </div>
               </div>
             ))}
@@ -138,41 +127,33 @@ export function BenefitsDashboard() {
         </div>
       )}
 
-      {/* Enrollments */}
-      {enrollments.length > 0 && (
+      {/* Inquiries */}
+      {inquiries.length > 0 && (
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
             <Users className="h-4 w-4 text-brand-yellow" />
-            <h3 className="font-semibold text-sm text-foreground">Enrollment Overview</h3>
+            <h3 className="font-semibold text-sm text-foreground">Benefits Inquiries</h3>
           </div>
-          <div className="divide-y divide-border">
-            {enrollments.map((e) => (
-              <div key={e.sys_id} className="flex items-center justify-between px-5 py-3">
+          <div className="divide-y divide-border max-h-64 overflow-y-auto">
+            {inquiries.map((inq) => (
+              <div key={inq.id} className="flex items-center justify-between px-5 py-3">
                 <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {displayVal(e.employee)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {displayVal(e.benefit_type)}
-                    {e.coverage_level ? ` · ${e.coverage_level}` : ""}
+                  <p className="text-sm font-medium text-foreground">{inq.employee_name}</p>
+                  <p className="text-xs text-muted-foreground capitalize">
+                    {inq.benefit_category?.replace(/_/g, " ") ?? "General"} · {inq.inquiry_date}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  {e.employee_premium && (
-                    <span className="text-xs text-muted-foreground">${e.employee_premium}/mo</span>
-                  )}
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    e.enrollment_status === "enrolled"
-                      ? "bg-brand-yellow/10 text-brand-yellow"
-                      : e.enrollment_status === "pending"
-                        ? "bg-brand-gold/10 text-brand-gold"
-                        : e.enrollment_status === "declined"
-                          ? "bg-red-100 text-red-600"
-                          : "bg-muted text-muted-foreground"
-                  }`}>
-                    {e.enrollment_status ?? "unknown"}
-                  </span>
-                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  inq.status === "resolved"
+                    ? "bg-brand-lime/10 text-brand-lime"
+                    : inq.status === "in_progress"
+                      ? "bg-brand-cyan/10 text-brand-cyan"
+                      : inq.status === "open"
+                        ? "bg-brand-yellow/10 text-brand-yellow"
+                        : "bg-muted text-muted-foreground"
+                }`}>
+                  {inq.status.replace(/_/g, " ")}
+                </span>
               </div>
             ))}
           </div>
