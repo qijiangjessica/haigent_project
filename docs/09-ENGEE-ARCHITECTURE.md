@@ -189,7 +189,7 @@ Consecutive `ToolMessage`s are grouped back into a single Anthropic user turn on
 | engee-store.ts | In-memory `Map` — surveys, notes, flags, mentor roster | — |
 | Microsoft 365 | Graph API `findMeetingTimes` | `MICROSOFT_TENANT_ID / CLIENT_ID / CLIENT_SECRET` |
 | Microsoft Teams | Incoming Webhook · Adaptive Cards | `TEAMS_WEBHOOK_URL` |
-| Slack | Bot API `chat.postMessage` | `SLACK_BOT_TOKEN` |
+| Slack | Incoming Webhook · formatted text message | `SLACK_WEBHOOK_URL` |
 
 ---
 

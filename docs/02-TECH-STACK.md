@@ -48,11 +48,11 @@ Defined as CSS custom properties in `src/app/globals.css`:
 
 | Service | Module | Purpose |
 |---|---|---|
-| **Anthropic Claude API** (`claude-sonnet-4-6`) | Engee | Agentic chat loop with tool calling — mentor matching, scheduling, engagement monitoring |
-| **ServiceNow REST API** | Onboarding, Benefits, Engee | Onboarding records, benefits enrollment, attrition risk tracking |
+| **Anthropic Claude API** (`claude-sonnet-4-6`) | Engee | LangGraph StateGraph with 9 DynamicStructuredTools — mentor matching, scheduling, engagement monitoring |
+| **LangGraph** (`@langchain/langgraph`) | Engee | StateGraph orchestration — replaces custom agentic while-loop |
 | **Salesforce Agentforce** | Payroll | Conversational payroll assistant (session-based agent protocol) |
-| **Microsoft Teams Webhook** | Engee | Adaptive Card coffee chat requests with @mention |
-| **Slack Webhook** | Engee | Coffee chat requests with user mentions |
+| **Microsoft Teams Webhook** | Engee | Incoming webhook · Adaptive Card coffee chat requests |
+| **Slack Webhook** | Engee | Incoming webhook · formatted coffee chat messages (`SLACK_WEBHOOK_URL`) |
 | **Microsoft Graph API** | Engee (workIQ) | `findMeetingTimes` — checks Outlook calendar availability for both employee and mentor, returns 3 suggested 30-min slots |
 
 ### Microsoft Graph API (workIQ) Setup
@@ -72,10 +72,11 @@ When not configured, `src/lib/calendar.ts` automatically falls back to realistic
 | Module | Storage | Notes |
 |---|---|---|
 | Schedule, Sourcing | TypeScript files (`src/data/`) | Static hardcoded data, no DB needed |
-| Onboarding, Benefits | ServiceNow | Live API queries |
+| Onboarding | In-memory `Map` (`src/lib/onboarding-store.ts`) | 4 seeded employees; designed for drop-in DB swap |
+| Benefits | In-memory `Map` (`src/lib/benefits-store.ts`) | 12 seeded benefit plans + inquiry store |
 | Payroll | Salesforce | Live Agentforce sessions |
 | Engee surveys | In-memory `Map` (`src/lib/engee-store.ts`) | Designed for easy swap to DB (Supabase/SQLite) |
-| Engee mentors | Hardcoded array (`src/lib/engee-store.ts`) | 10 mentors across 6 departments |
+| Engee mentors | Hardcoded array (`src/lib/engee-store.ts`) | 10 real Procogia staff across 6 departments |
 
 ## Dev Tools
 

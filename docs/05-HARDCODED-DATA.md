@@ -58,17 +58,17 @@ Surveys are stored in an in-memory `Map<string, SurveyRecord>` keyed by `employe
 }
 ```
 
-### Mentor Roster (10 mentors)
+### Mentor Roster (10 mentors — real Procogia staff)
 
 | Name | Title | Department | Slack ID | Teams ID (email) |
 |---|---|---|---|---|
-| Alex Chen | Senior Software Engineer | Engineering | U_ALEX | — |
-| Jordan Lee | Data Science Lead | Data & Analytics | U_JORDAN | — |
-| Sam Rivera | Senior Product Manager | Product | U_SAM | — |
-| Taylor Kim | Marketing Director | Marketing | U_TAYLOR | — |
-| Morgan Patel | People Operations Lead | HR | U_MORGAN | — |
-| Casey Nguyen | DevOps Engineer | Engineering | U_CASEY | — |
-| Riley Thompson | UX Lead | Design | U_RILEY | — |
+| Sahib Badwal | Senior Software Engineer | Engineering | U_SAHIB | sahib.badwal@procogia.com |
+| Siddharth Maheshwari | Data Science Lead | Data & Analytics | U_SIDDHARTH | siddharth.maheshwari@procogia.com |
+| Love Patel | Senior Product Manager | Product | U_LOVE | love.patel@procogia.com |
+| Rose Vermazen | Marketing Director | Marketing | U_ROSE | rose.vermazen@procogia.com |
+| Swati Sood | People Operations Lead | HR | U_SWATI | swati.sood@procogia.com |
+| Videesh Guduru | DevOps Engineer | Engineering | U_VIDEESH | videesh.guduru@procogia.com |
+| Oisin Bates | UX Lead | Design | U_OISIN | oisin.bates@procogia.com |
 | Zilai Feng | Data Scientist | Data & Analytics | U_ZILAI | Zilai@procogia.com |
 | Gabriel Brock | Senior Consultant | Engineering | U_GABRIEL | gabriel.brock@procogia.com |
 | Ahsaan Rizvi | Senior Data Sci Consultant III | Data & Analytics | U0ADJ36JJ2K | ahsaan.rizvi@procogia.com |
@@ -87,11 +87,17 @@ Returns top 3 mentors sorted by score descending.
 
 ---
 
-## Onboarding & Benefits — ServiceNow
+## Onboarding — In-Memory Store (`src/lib/onboarding-store.ts`)
 
-Data is fetched live from ServiceNow tables:
-- **Onboarding:** `x_1926120_employee_onboarding` — fields: employee_name, department, position, start_date, onboarding_status, equipment_requested, it_account_created, workspace_assigned, orientation_completed, documents_completed, employee_training
-- **Benefits:** `x_haigent_benefits_type` and `x_haigent_benefits_enrollment` tables
+4 seeded employees with fields: `employee_name`, `department`, `position`, `start_date`, `onboarding_status` (`not_started` | `in_progress` | `completed`), plus task checklist (`equipment_requested`, `it_account_created`, `workspace_assigned`, `orientation_completed`, `documents_completed`, `employee_training`). IT incidents stored in a separate `Map`. Designed for drop-in DB swap.
+
+> **Why not ServiceNow?** Onboarding data was originally intended to be read from the `x_1926120_employee_onboarding` ServiceNow table via `src/lib/servicenow.ts`. This was replaced with the local in-memory store after the ServiceNow instance going offline caused agent failures. The agent chat route (`/api/onboarding/chat`) now imports directly from `onboarding-store.ts`. `servicenow.ts` is kept for reference but is not called by any agent.
+
+## Benefits — In-Memory Store (`src/lib/benefits-store.ts`)
+
+12 seeded benefit plans (`BENEFIT_CATALOG`) covering: health, dental, vision, retirement, life insurance, disability, wellness, PTO, EAP, professional development, and commuter benefits. Employee inquiries stored in a `Map<string, BenefitInquiry>` with 2 seed entries. Designed for drop-in DB swap.
+
+> **Why not ServiceNow?** Benefits catalog and inquiry data was originally intended to come from `x_1926120_employee_benefits_catalog` and `x_1926120_employee_benefits_inquiry` ServiceNow tables. Same reason as onboarding — replaced with the local store after ServiceNow instance downtime broke the agents. The agent chat route (`/api/benefits/chat`) now imports directly from `benefits-store.ts`.
 
 ---
 

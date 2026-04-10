@@ -28,10 +28,10 @@ app/
 │   │   └── meetings/page.tsx
 │   │
 │   ├── reference/page.tsx        # Coming Soon
-│   ├── onboarding/page.tsx       # Built — ServiceNow AI Assistant
-│   ├── benefits/page.tsx         # Built — ServiceNow AI Assistant + dashboard
+│   ├── onboarding/page.tsx       # Built — AI Assistant + dashboard (onboarding-store)
+│   ├── benefits/page.tsx         # Built — AI Assistant + dashboard (benefits-store)
 │   ├── payroll/page.tsx          # Built — Salesforce Agentforce AI Assistant
-│   └── engee/page.tsx            # Built — Employee Engagement Agent
+│   └── engee/page.tsx            # Built — Employee Engagement Agent (LangGraph)
 │
 └── api/                          # Backend API routes
     ├── engee/
@@ -39,41 +39,45 @@ app/
     │   ├── survey/route.ts       # GET/POST survey CRUD
     │   └── mentor-suggest/route.ts  # Mentor matching endpoint
     ├── benefits/
-    │   ├── chat/route.ts         # Benefits AI chat (Claude + ServiceNow)
-    │   └── records/route.ts      # ServiceNow benefits data
+    │   ├── chat/route.ts         # Benefits AI chat (Claude + benefits-store)
+    │   └── records/route.ts      # Benefits catalog + inquiries from benefits-store
     ├── onboarding/
-    │   └── chat/route.ts         # Onboarding AI chat (Claude + ServiceNow)
+    │   ├── chat/route.ts         # Onboarding AI chat (Claude + onboarding-store)
+    │   └── records/route.ts      # Onboarding records from onboarding-store
     ├── agent/route.ts            # Payroll — Salesforce Agentforce sessions
-    └── servicenow/               # ServiceNow proxy routes
+    └── servicenow/               # ServiceNow proxy (available but not used by agents)
 ```
 
 ## Engee Agent Architecture
 
-Engee is built on an **agentic loop** pattern using the Anthropic Claude API:
+Engee is built on **LangGraph** (`@langchain/langgraph`) — a `StateGraph` with two nodes (`agent` and `tools`) replaces any custom agentic loop:
 
 ```
-User Message
-     ↓
-Claude (claude-sonnet-4-6) with 9 tools
-     ↓
-stop_reason === "tool_use"?
-  ├── Yes → executeTool() → append result → loop (max 10 iterations)
-  └── No  → return text response
+__start__
+    ↓
+[ agent node ] ←─────────────────────┐
+  ChatAnthropic.invoke(messages)      │
+    ↓                                 │
+shouldContinue()                      │
+  ├── tool_calls present? → [ tools node ]
+  │     ToolNode executes             │
+  │     DynamicStructuredTool(s) ─────┘
+  └── no tool_calls? → END
 ```
 
 ### Engee Tools (9 total)
 
 | Tool | Purpose |
 |---|---|
-| `get_employee_engagement` | ServiceNow lookup + attrition risk scoring |
-| `get_team_engagement_summary` | Team-wide engagement overview |
-| `submit_interest_survey` | Save survey to in-memory store |
+| `get_employee_engagement` | Read survey + attrition flag from `engee-store` |
+| `get_team_engagement_summary` | All surveyed employees from `engee-store` |
+| `submit_interest_survey` | Save survey to `engee-store` |
 | `find_mentor_match` | Match employee to mentor by department + interests |
 | `find_mentor_by_name` | Look up mentor contact details from roster |
 | `find_available_meeting_slots` | **workIQ** — Microsoft Graph `findMeetingTimes`, returns 3 open 30-min slots |
-| `schedule_coffee_chat` | Send Teams Adaptive Card or Slack message with @mention + suggested slots |
-| `add_engagement_note` | Write check-in note to ServiceNow |
-| `flag_attrition_risk` | Mark employee at-risk in ServiceNow |
+| `schedule_coffee_chat` | Send Teams Adaptive Card or Slack webhook message with suggested slots |
+| `add_engagement_note` | Append check-in note to `engee-store` |
+| `flag_attrition_risk` | Mark employee at-risk in `engee-store` |
 
 ### workIQ Calendar Flow
 
@@ -138,17 +142,32 @@ Current accent colors by module:
 
 | File | Purpose |
 |---|---|
-| `src/lib/engee-store.ts` | In-memory survey store, mentor roster (10 mentors), matching algorithm |
+| `src/lib/engee-store.ts` | In-memory survey store, mentor roster (10 Procogia staff), matching algorithm |
+| `src/lib/benefits-store.ts` | In-memory benefits catalog (12 plans) + inquiry store |
+| `src/lib/onboarding-store.ts` | In-memory onboarding records (4 employees) + IT incident store |
 | `src/lib/calendar.ts` | Microsoft Graph API auth + `findMeetingTimes` + mock slot fallback |
-| `src/lib/servicenow.ts` | ServiceNow REST API helpers (`queryTable`, `updateRecord`) |
+| `src/lib/servicenow.ts` | ServiceNow REST API helpers — **not used by agents**; replaced by local stores (see below) |
 | `src/lib/salesforce.ts` | Salesforce Agentforce session management |
 | `src/lib/modules.ts` | Sidebar navigation config |
 | `src/lib/utils.ts` | `cn()` helper (clsx + twMerge) |
 
 ## Key Design Decisions
 
-1. **Agentic loop** — Claude decides which tools to call; the backend executes and feeds results back
-2. **No database for surveys** — in-memory `Map` in `engee-store.ts`; structured to swap to Supabase/SQLite without breaking callers
+1. **LangGraph StateGraph (Engee)** — `ChatAnthropic` + `ToolNode` in a `StateGraph`; replaces the old custom while-loop; `shouldContinue()` edge routes to END when no tool calls remain
+2. **No database** — all three agents (Engee, Benefits, Onboarding) use in-memory `Map` stores; structured to swap to Supabase/SQLite without breaking callers
 3. **Graceful degradation** — every external integration has a fallback (mock data, error message) so the app always works in demo mode
 4. **Module config** — centralised `AI_MODULES` makes sidebar navigation and accent colors mechanical to change
 5. **Calendar mock** — `src/lib/calendar.ts` generates realistic business-day slots when Azure credentials are absent
+
+## ServiceNow — Why It's Not Used
+
+`src/lib/servicenow.ts` contains a full ServiceNow Table REST API client (`queryTable`, `getRecord`, `updateRecord`, `createRecord`) targeting custom tables:
+- `x_1926120_employee_onboarding`
+- `x_1926120_employee_benefits_catalog`
+- `x_1926120_employee_benefits_inquiry`
+
+The file also includes a mock fallback that activates when `SERVICENOW_INSTANCE_URL` / `SERVICENOW_USERNAME` / `SERVICENOW_PASSWORD` env vars are absent.
+
+**The onboarding and benefits agents no longer call `servicenow.ts` at all.** This was intentionally removed after the ServiceNow instance going offline caused agent failures in production. The agent chat routes now import directly from `onboarding-store.ts` and `benefits-store.ts`, which are always available regardless of ServiceNow's status.
+
+`servicenow.ts` is kept in the codebase for reference. To restore the live integration, the chat routes would need to replace their store imports with calls to `queryTable` / `updateRecord` / `createRecord`.
