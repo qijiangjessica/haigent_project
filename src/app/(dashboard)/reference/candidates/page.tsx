@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
 import { MATCH_RECORDS } from "@/data/reference/matches";
-import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle, Square, CheckSquare, Minus, Users, Filter } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle, Square, CheckSquare, Minus, Users, Filter, UserPlus } from "lucide-react";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { AUDIT_LOG } from "@/data/reference/audit-log";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
@@ -28,6 +28,9 @@ interface SubmittedReferral {
   resume_filename: string | null;
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
+  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "hired";
+  in_review_at: string | null;
+  skills_claimed: string[];
 }
 
 interface LiveMatchRecord {
@@ -149,6 +152,10 @@ export default function CandidatesPage() {
   const [promoteError, setPromoteError] = useState<string | null>(null);
   const [promoteRecruiterEmail, setPromoteRecruiterEmail] = useState("");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [inReviewSet, setInReviewSet] = useState<Set<string>>(new Set());
+  const [movingToPipelineId, setMovingToPipelineId] = useState<string | null>(null);
+  const [referralMatchedSet, setReferralMatchedSet] = useState<Set<string>>(new Set());
+  const [applyingDecisionId, setApplyingDecisionId] = useState<string | null>(null);
 
   function toggleLiveScore(referralId: string) {
     setExpandedLiveScores((prev) => {
@@ -156,6 +163,113 @@ export default function CandidatesPage() {
       next.has(referralId) ? next.delete(referralId) : next.add(referralId);
       return next;
     });
+  }
+
+  async function handleMoveToPipeline(referralId: string) {
+    setMovingToPipelineId(referralId);
+    try {
+      const res = await fetch(`/api/reference/referrals/${referralId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pipeline_status: "in_review",
+          in_review_at: new Date().toISOString(),
+        }),
+      });
+      if (res.ok) {
+        setInReviewSet((prev) => new Set([...prev, referralId]));
+      }
+    } catch {
+      // silently ignore — user can retry
+    } finally {
+      setMovingToPipelineId(null);
+    }
+  }
+
+  async function persistReferralDecision(referralId: string, decision: DecisionValue, reasonCode: string) {
+    if (!decision) return;
+    const afterPipelineStatus =
+      decision === "PROCEED" ? "in_pool"
+        : decision === "NOT_SUITABLE" ? "not_suitable"
+          : null;
+
+    // Record decision in audit store
+    fetch("/api/reference/decisions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidate_id: referralId, decision, reason_code: reasonCode }),
+    }).catch(() => {});
+
+    // PATCH pipeline_status for terminal decisions
+    if (afterPipelineStatus) {
+      setApplyingDecisionId(referralId);
+      try {
+        await fetch(`/api/reference/referrals/${referralId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pipeline_status: afterPipelineStatus }),
+        });
+        if (decision === "PROCEED") {
+          // Remove from Active Pipeline
+          setInReviewSet((prev) => { const n = new Set(prev); n.delete(referralId); return n; });
+
+          // Update local referral record so it doesn't drift back into Pending Review
+          setSubmittedReferrals((prev) =>
+            prev.map((r) => r.referral_id === referralId ? { ...r, pipeline_status: "in_pool" as const } : r)
+          );
+
+          // Auto-create a LivePoolEntry so the candidate is visible on the Talent Pool page
+          const referral = submittedReferrals.find((r) => r.referral_id === referralId);
+          if (referral) {
+            const yoe = referral.years_experience ?? 0;
+            const expLevel = yoe >= 10 ? "Lead" : yoe >= 6 ? "Senior" : yoe >= 3 ? "Mid" : "Junior";
+            const poolRes = await fetch("/api/reference/promote-to-pool", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                referral_id: referralId,
+                experience_level: expLevel,
+                skill_tags: referral.skills_claimed ?? [],
+                location_tags: referral.location ? [referral.location] : [],
+                preferred_role_tags: [],
+              }),
+            }).catch(() => null);
+            if (poolRes?.ok) {
+              const poolData = await poolRes.json().catch(() => null);
+              if (poolData?.pool_id) {
+                setPromotedMap((prev) => ({ ...prev, [referralId]: poolData.pool_id }));
+              }
+            } else {
+              // Already in pool (409) — still mark promoted so it doesn't show in pending
+              setPromotedMap((prev) => ({ ...prev, [referralId]: "pool" }));
+            }
+          }
+        } else if (decision === "NOT_SUITABLE") {
+          setInReviewSet((prev) => { const n = new Set(prev); n.delete(referralId); return n; });
+          setRejectedSet((prev) => new Set([...prev, referralId]));
+        }
+      } finally {
+        setApplyingDecisionId(null);
+      }
+    }
+  }
+
+  function setReferralDecision(referralId: string, decision: DecisionValue) {
+    const reasonCode = decisions[referralId]?.reasonCode ?? "";
+    setDecisions((prev) => ({
+      ...prev,
+      [referralId]: { decision, reasonCode: prev[referralId]?.reasonCode ?? "" },
+    }));
+    persistReferralDecision(referralId, decision, reasonCode);
+  }
+
+  function setReferralReasonCode(referralId: string, reasonCode: string) {
+    const currentDecision = decisions[referralId]?.decision ?? null;
+    setDecisions((prev) => ({
+      ...prev,
+      [referralId]: { ...prev[referralId], reasonCode },
+    }));
+    persistReferralDecision(referralId, currentDecision, reasonCode);
   }
 
   function openPromoteForm(referralId: string, defaultLocation: string) {
@@ -243,7 +357,15 @@ export default function CandidatesPage() {
     fetch("/api/reference/submit")
       .then((r) => r.json())
       .then((data: { referrals: SubmittedReferral[] }) => {
-        setSubmittedReferrals(data.referrals ?? []);
+        const referrals = data.referrals ?? [];
+        setSubmittedReferrals(referrals);
+        // Restore in-review state from persisted pipeline_status
+        const inReview = new Set(
+          referrals
+            .filter((r) => r.pipeline_status === "in_review")
+            .map((r) => r.referral_id)
+        );
+        setInReviewSet(inReview);
       })
       .catch(() => {});
 
@@ -438,6 +560,80 @@ export default function CandidatesPage() {
     });
   }, [search, statusFilter, matchFilter, bestMatchByCandidate]);
 
+  // Referrals split by pipeline stage
+  const inReviewReferrals = useMemo(
+    () => submittedReferrals.filter((r) => inReviewSet.has(r.referral_id)),
+    [submittedReferrals, inReviewSet]
+  );
+
+  const pendingReferrals = useMemo(
+    () =>
+      submittedReferrals.filter(
+        (r) =>
+          !inReviewSet.has(r.referral_id) &&
+          !rejectedSet.has(r.referral_id) &&
+          !promotedMap[r.referral_id] &&
+          r.pipeline_status !== "in_pool" &&
+          r.pipeline_status !== "hired"
+      ),
+    [submittedReferrals, inReviewSet, rejectedSet, promotedMap]
+  );
+
+  // Referral-specific status filters hide the seeded candidate section
+  const REFERRAL_STATUS_FILTERS = new Set(["in_review", "matched_referral", "pending_review"]);
+
+  // Filtered versions apply search + match + status filter to referral sections
+  const filteredInReviewReferrals = useMemo(() => {
+    // Hide entire section when filtering to a non-pipeline status
+    if (statusFilter !== "all" && !REFERRAL_STATUS_FILTERS.has(statusFilter)) return [];
+    // Hide when filtering specifically to pending only
+    if (statusFilter === "pending_review") return [];
+    const q = search.toLowerCase();
+    return inReviewReferrals.filter((r) => {
+      if (statusFilter === "matched_referral" && !referralMatchedSet.has(r.referral_id)) return false;
+      if (q) {
+        const hit =
+          r.candidate_name.toLowerCase().includes(q) ||
+          r.current_employer.toLowerCase().includes(q) ||
+          r.skills_claimed?.some((s) => s.toLowerCase().includes(q));
+        if (!hit) return false;
+      }
+      if (matchFilter !== "all") {
+        const refMatches = liveMatches.filter((m) => m.referral_id === r.referral_id);
+        const best = refMatches.sort((a, b) => b.match_score - a.match_score)[0];
+        if (!best || best.classification !== matchFilter) return false;
+      }
+      return true;
+    });
+  }, [inReviewReferrals, search, matchFilter, statusFilter, liveMatches, referralMatchedSet]);
+
+  const filteredPendingReferrals = useMemo(() => {
+    // Hide entire section when filtering to pipeline-specific statuses
+    if (statusFilter === "in_review" || statusFilter === "matched_referral") return [];
+    // When filtering to pending_review show all pending (no match filter - they may lack scores)
+    const q = search.toLowerCase();
+    return pendingReferrals.filter((r) => {
+      if (!q) return true;
+      return (
+        r.candidate_name.toLowerCase().includes(q) ||
+        r.current_employer.toLowerCase().includes(q) ||
+        r.skills_claimed?.some((s) => s.toLowerCase().includes(q))
+      );
+    });
+  }, [pendingReferrals, search, statusFilter]);
+
+  // Pipeline stats
+  const pipelineStats = useMemo(() => {
+    const strongMatches = inReviewReferrals.filter((r) => {
+      const best = liveMatches
+        .filter((m) => m.referral_id === r.referral_id)
+        .sort((a, b) => b.match_score - a.match_score)[0];
+      return best?.classification === "Strong Match";
+    }).length;
+    const hired = submittedReferrals.filter((r) => r.pipeline_status === "hired").length;
+    return { strongMatches, hired };
+  }, [inReviewReferrals, liveMatches, submittedReferrals]);
+
   function toggleScore(id: string) {
     setExpandedScores((prev) => {
       const next = new Set(prev);
@@ -539,6 +735,28 @@ export default function CandidatesPage() {
         actionLabel="Submit Referral"
         actionHref="/reference/submit"
       />
+
+      {/* ── Pipeline stats bar ── */}
+      {submittedReferrals.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 -mt-2">
+          <div className="bg-white rounded-xl border border-border shadow-sm px-4 py-3 flex flex-col gap-0.5">
+            <span className="text-2xl font-bold text-foreground">{filtered.length + inReviewReferrals.length}</span>
+            <span className="text-xs text-muted-foreground">Total in Pipeline</span>
+          </div>
+          <div className="bg-white rounded-xl border border-brand-green/20 shadow-sm px-4 py-3 flex flex-col gap-0.5">
+            <span className="text-2xl font-bold text-brand-green">{pipelineStats.strongMatches}</span>
+            <span className="text-xs text-muted-foreground">Strong Matches</span>
+          </div>
+          <div className="bg-white rounded-xl border border-brand-cyan/20 shadow-sm px-4 py-3 flex flex-col gap-0.5">
+            <span className="text-2xl font-bold text-brand-cyan">{pendingReferrals.length}</span>
+            <span className="text-xs text-muted-foreground">Pending Review</span>
+          </div>
+          <div className="bg-white rounded-xl border border-brand-gold/20 shadow-sm px-4 py-3 flex flex-col gap-0.5">
+            <span className="text-2xl font-bold text-brand-gold">{pipelineStats.hired}</span>
+            <span className="text-xs text-muted-foreground">Hired</span>
+          </div>
+        </div>
+      )}
 
       {/* Export buttons */}
       <div className="flex gap-2 justify-end -mt-2">
@@ -642,9 +860,16 @@ export default function CandidatesPage() {
           className="bg-white border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
         >
           <option value="all">All Statuses</option>
-          {Object.entries(STATUS_LABELS).map(([val, label]) => (
-            <option key={val} value={val}>{label}</option>
-          ))}
+          <optgroup label="Seeded Candidates">
+            {Object.entries(STATUS_LABELS).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Referred Candidates">
+            <option value="in_review">In Active Pipeline</option>
+            <option value="matched_referral">Matched (Referred)</option>
+            <option value="pending_review">Pending Review</option>
+          </optgroup>
         </select>
         <select
           value={matchFilter}
@@ -783,7 +1008,7 @@ export default function CandidatesPage() {
 
       {/* Result count */}
       <p className="text-xs text-muted-foreground -mt-2">
-        Showing {filtered.length} seeded · {submittedReferrals.length} submitted
+        Showing {filtered.length} seeded · {filteredInReviewReferrals.length} in pipeline · {filteredPendingReferrals.length} pending review
         {selectedIds.size > 0 && <span className="text-brand-teal ml-2">· {selectedIds.size} selected</span>}
       </p>
 
@@ -1091,19 +1316,298 @@ export default function CandidatesPage() {
         })}
       </div>
 
+      {/* ── Active Pipeline — in_review referrals ── */}
+      {filteredInReviewReferrals.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-foreground">Active Pipeline</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-brand-green/10 text-brand-green font-medium">
+              {filteredInReviewReferrals.length}
+            </span>
+            <span className="text-xs text-muted-foreground">· Referrals under active review</span>
+          </div>
+
+          <div className="grid gap-4">
+            {filteredInReviewReferrals.map((referral) => {
+              const matches = liveMatches.filter((m) => m.referral_id === referral.referral_id);
+              const latestByJob = matches.reduce<Record<string, LiveMatchRecord>>((acc, m) => {
+                const existing = acc[m.posting_id];
+                if (!existing || m.evaluated_date >= existing.evaluated_date) acc[m.posting_id] = m;
+                return acc;
+              }, {});
+              const sortedMatches = Object.values(latestByJob).sort((a, b) => b.match_score - a.match_score);
+              const bestMatch = sortedMatches[0] ?? null;
+              const refDays = daysSince(referral.submitted_at);
+              const refContacted = contactSummary[referral.referral_id] ?? 0;
+              const refStale = refDays > 14 && refContacted === 0;
+              const liveScoreExpanded = expandedLiveScores.has(referral.referral_id);
+              const dec = decisions[referral.referral_id] ?? { decision: null, reasonCode: "" };
+              const isMatched = referralMatchedSet.has(referral.referral_id);
+              const isApplying = applyingDecisionId === referral.referral_id;
+
+              return (
+                <div key={referral.referral_id} className={`bg-white rounded-xl border shadow-sm p-5 ${
+                  isMatched ? "border-brand-teal/40" : "border-brand-green/30"
+                }`}>
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link
+                          href={`/reference/referrals/${referral.referral_id}`}
+                          className="font-semibold text-foreground hover:text-brand-teal hover:underline"
+                        >
+                          {referral.candidate_name}
+                        </Link>
+                        {isMatched ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-brand-teal/10 text-brand-teal font-medium flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Proceeding
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-brand-green/10 text-brand-green font-medium flex items-center gap-1">
+                            <UserPlus className="h-3 w-3" />
+                            In Active Pipeline
+                          </span>
+                        )}
+                        {referral.availability && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-brand-cyan/10 text-brand-cyan font-medium">
+                            {referral.availability}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        {referral.current_employer} · {referral.years_experience}y exp · {referral.location}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {referral.candidate_email}{referral.candidate_phone ? ` · ${referral.candidate_phone}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Referred by {referral.referrer_name} · {new Date(referral.submitted_at).toLocaleDateString("en-CA")}
+                      </p>
+                      <div className="mt-1.5">
+                        <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-full font-medium border ${
+                          refStale
+                            ? "bg-brand-gold/10 text-brand-gold border-brand-gold/30"
+                            : "bg-muted text-muted-foreground border-border"
+                        }`}>
+                          {refDays}d in pipeline · {refContacted} contacted
+                        </span>
+                      </div>
+                    </div>
+                    {bestMatch && (
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <div className="text-right">
+                          <span className="text-2xl font-bold text-foreground">{bestMatch.match_score}</span>
+                          <span className="text-sm text-muted-foreground">/100</span>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          bestMatch.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                            : bestMatch.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                              : "bg-muted text-muted-foreground"
+                        }`}>
+                          {bestMatch.classification}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Skills claimed */}
+                  {referral.skills_claimed?.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs font-medium text-muted-foreground mb-1.5">Skills</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {referral.skills_claimed.map((skill) => (
+                          <span key={skill} className="text-xs px-2.5 py-1 rounded-md font-medium bg-muted text-muted-foreground">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Job matches */}
+                  {sortedMatches.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-medium text-muted-foreground">Job Matches</p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                            {sortedMatches[0]?.scoring_method === "ai" ? "Claude AI" : "Rule-based"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => toggleLiveScore(referral.referral_id)}
+                          className="flex items-center gap-1 text-xs text-brand-teal hover:underline"
+                        >
+                          Score breakdown
+                          {liveScoreExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {sortedMatches.map((m) => {
+                          const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
+                          return (
+                            <div key={m.match_id} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
+                              <span className="text-muted-foreground">{jobTitle}</span>
+                              <span className="font-semibold text-foreground">{m.match_score}</span>
+                              <span className={
+                                m.classification === "Strong Match" ? "text-brand-green"
+                                  : m.classification === "Partial Match" ? "text-brand-gold"
+                                    : "text-muted-foreground"
+                              }>· {m.classification}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {liveScoreExpanded && (
+                        <div className="mt-3 space-y-2">
+                          {sortedMatches.map((m) => {
+                            const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
+                            return (
+                              <div key={m.match_id} className="bg-muted rounded-lg p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-xs font-semibold text-foreground">{jobTitle}</p>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                    m.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                                      : m.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                                        : "bg-muted text-muted-foreground"
+                                  }`}>
+                                    {m.match_score} · {m.classification}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                  {[
+                                    { label: "Skill Overlap", value: m.skill_overlap_score },
+                                    { label: "Experience",    value: m.experience_score },
+                                    { label: "Location",      value: m.location_score },
+                                    { label: "Seniority",     value: m.seniority_score },
+                                  ].map((item) => (
+                                    <div key={item.label} className="text-center">
+                                      <p className="text-xs text-muted-foreground">{item.label}</p>
+                                      <p className="text-lg font-bold text-foreground">{item.value}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Recruiter Decision */}
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Recruiter Decision</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setReferralDecision(referral.referral_id, dec.decision === "PROCEED" ? null : "PROCEED")}
+                        disabled={isApplying}
+                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium border transition-colors disabled:opacity-50 ${
+                          dec.decision === "PROCEED"
+                            ? "bg-brand-green/10 text-brand-green border-brand-green/30"
+                            : "bg-white text-muted-foreground border-border hover:border-brand-green/40 hover:text-brand-green"
+                        }`}
+                      >
+                        {isApplying && dec.decision !== "PROCEED" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                        Proceed
+                      </button>
+                      <button
+                        onClick={() => setReferralDecision(referral.referral_id, dec.decision === "ON_HOLD" ? null : "ON_HOLD")}
+                        disabled={isApplying}
+                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium border transition-colors disabled:opacity-50 ${
+                          dec.decision === "ON_HOLD"
+                            ? "bg-brand-gold/10 text-brand-gold border-brand-gold/30"
+                            : "bg-white text-muted-foreground border-border hover:border-brand-gold/40 hover:text-brand-gold"
+                        }`}
+                      >
+                        <Clock className="h-3.5 w-3.5" />
+                        On Hold
+                      </button>
+                      <button
+                        onClick={() => setReferralDecision(referral.referral_id, dec.decision === "NOT_SUITABLE" ? null : "NOT_SUITABLE")}
+                        disabled={isApplying}
+                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium border transition-colors disabled:opacity-50 ${
+                          dec.decision === "NOT_SUITABLE"
+                            ? "bg-red-100 text-red-600 border-red-200"
+                            : "bg-white text-muted-foreground border-border hover:border-red-200 hover:text-red-500"
+                        }`}
+                      >
+                        {isApplying && dec.decision === "NOT_SUITABLE" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+                        Not Suitable
+                      </button>
+                    </div>
+                    {dec.decision === "NOT_SUITABLE" && (
+                      <div className="mt-2">
+                        <select
+                          value={dec.reasonCode}
+                          onChange={(e) => setReferralReasonCode(referral.referral_id, e.target.value)}
+                          className="bg-muted border border-border rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-red-200"
+                        >
+                          <option value="">Select reason…</option>
+                          {REASON_CODES.map((r) => (
+                            <option key={r.value} value={r.value}>{r.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {dec.decision === "PROCEED" && (
+                      <p className="mt-2 text-xs text-brand-teal">
+                        ✓ Moved to Talent Pool — candidate promoted to &ldquo;in_pool&rdquo;.
+                      </p>
+                    )}
+                    {dec.decision === "ON_HOLD" && (
+                      <p className="mt-2 text-xs text-muted-foreground">✓ Placed on hold — no status change.</p>
+                    )}
+                    {dec.decision === "NOT_SUITABLE" && dec.reasonCode && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        ✓ Marked not suitable · {REASON_CODES.find((r) => r.value === dec.reasonCode)?.label}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Links row */}
+                  <div className="flex gap-3 mt-3 pt-3 border-t border-border items-center flex-wrap">
+                    {referral.linkedin_url && (
+                      <a href={referral.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-teal hover:underline">
+                        LinkedIn ↗
+                      </a>
+                    )}
+                    {referral.resume_filename
+                      ? <span className="text-xs text-brand-green">✓ Resume attached</span>
+                      : <span className="text-xs text-muted-foreground">No resume</span>
+                    }
+                    <Link
+                      href={`/reference/referrals/${referral.referral_id}`}
+                      className="ml-auto text-xs text-brand-teal font-medium hover:underline"
+                    >
+                      View referral record →
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Recently Submitted Referrals ── */}
-      {submittedReferrals.length > 0 && (
+      {filteredPendingReferrals.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-sm font-semibold text-foreground">Recently Submitted</h2>
             <span className="text-xs px-2 py-0.5 rounded-full bg-brand-cyan/10 text-brand-cyan font-medium">
-              {submittedReferrals.length}
+              {filteredPendingReferrals.length}
             </span>
             <span className="text-xs text-muted-foreground">· Pending recruiter review</span>
           </div>
 
           <div className="grid gap-4">
-            {submittedReferrals.map((referral) => {
+            {filteredPendingReferrals.map((referral) => {
+              // Hard guard: referrals in Active Pipeline must never appear here
+              if (inReviewSet.has(referral.referral_id)) return null;
+
               const matches = liveMatches.filter((m) => m.referral_id === referral.referral_id);
               // Deduplicate: keep the latest match per posting_id (handles re-score runs)
               const latestByJob = matches.reduce<Record<string, LiveMatchRecord>>((acc, m) => {
@@ -1120,13 +1624,18 @@ export default function CandidatesPage() {
               const liveScoreExpanded = expandedLiveScores.has(referral.referral_id);
               const isPromoted = !!promotedMap[referral.referral_id];
               const isRejected = rejectedSet.has(referral.referral_id);
+              const isMovingToPipeline = movingToPipelineId === referral.referral_id;
               const isPromoteFormOpen = activePromoteId === referral.referral_id;
+              const hasStrongMatch = bestMatch?.classification === "Strong Match";
+              const hasGoodMatch = bestMatch && bestMatch.classification !== "No Match";
 
               const cardBorder = isPromoted
                 ? "border-brand-teal/30"
                 : isRejected
                   ? "border-muted"
-                  : "border-brand-cyan/20";
+                  : hasStrongMatch
+                    ? "border-brand-green/25"
+                    : "border-brand-cyan/20";
 
               return (
                 <div key={referral.referral_id} className={`bg-white rounded-xl border shadow-sm p-5 ${cardBorder}`}>
@@ -1295,11 +1804,33 @@ export default function CandidatesPage() {
                     </div>
                   )}
 
-                  {/* ── Recruiter actions (only when pending) ── */}
+                  {/* ── Recruiter actions (only when pending — in_review referrals never reach this section) ── */}
                   {!isPromoted && !isRejected && (
                     <div className="mt-3 pt-3 border-t border-border">
+                      {/* P2.3 — Strong match auto-suggest */}
+                      {hasStrongMatch && (
+                        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-brand-green/5 border border-brand-green/20">
+                          <TrendingUp className="h-3.5 w-3.5 text-brand-green flex-shrink-0" />
+                          <p className="text-xs text-brand-green">
+                            Strong match ({bestMatch!.match_score}/100) — this candidate is ready for the active pipeline.
+                          </p>
+                        </div>
+                      )}
                       <p className="text-xs font-medium text-muted-foreground mb-2">Recruiter Decision</p>
                       <div className="flex gap-2 flex-wrap">
+                        {/* P2.1 — Add to Active Pipeline button (shown when score is Strong or Partial) */}
+                        {hasGoodMatch && (
+                          <button
+                            onClick={() => handleMoveToPipeline(referral.referral_id)}
+                            disabled={isMovingToPipeline}
+                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium border border-brand-green/40 bg-brand-green/5 text-brand-green hover:bg-brand-green/10 transition-colors disabled:opacity-50"
+                          >
+                            {isMovingToPipeline
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <UserPlus className="h-3.5 w-3.5" />}
+                            {isMovingToPipeline ? "Moving…" : "Add to Pipeline"}
+                          </button>
+                        )}
                         <button
                           onClick={() => isPromoteFormOpen ? setActivePromoteId(null) : openPromoteForm(referral.referral_id, referral.location)}
                           className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium border transition-colors ${

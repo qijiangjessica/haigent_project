@@ -1,39 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getDecisions, getReferrals, type RecruiterDecision,
-  addReferral, addLiveMatchRecord, addLivePoolEntry,
-  setDecision, rejectReferral, addLiveAuditEvent,
-  setStatusOverride, setScoringWeights, setJobWeightOverride,
 } from "@/lib/reference-store";
-import { setDecisionAndPersist, loadFromDisk } from "@/lib/reference-json-persistence";
+import { setDecisionAndPersist, hydrateStoreFromDisk } from "@/lib/reference-json-persistence";
 import { sendEmail, appUrl } from "@/lib/email";
 import { statusChangeReferrer } from "@/lib/email-templates";
 
-function hydrateIfEmpty() {
-  if (getReferrals().length === 0) {
-    try {
-      const snap = loadFromDisk();
-      for (const r of snap.referrals)    addReferral(r);
-      for (const m of snap.matches)      addLiveMatchRecord(m);
-      for (const p of snap.poolEntries)  addLivePoolEntry(p);
-      for (const d of snap.decisions)    setDecision(d);
-      for (const id of snap.rejectedIds) rejectReferral(id);
-      for (const e of snap.auditEvents)  addLiveAuditEvent(e);
-      for (const [k, v] of Object.entries(snap.statusOverrides)) setStatusOverride(k, v);
-      setScoringWeights(snap.scoringWeights);
-      for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
-    } catch { /* no disk data yet */ }
-  }
-}
-
 export async function GET() {
-  hydrateIfEmpty();
+  hydrateStoreFromDisk();
   return NextResponse.json({ decisions: getDecisions() });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    hydrateIfEmpty();
+    hydrateStoreFromDisk();
 
     const body = await request.json() as Partial<RecruiterDecision> & { recruiter_email?: string };
 

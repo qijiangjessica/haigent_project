@@ -10,21 +10,9 @@ import {
 import {
   setJobWeightOverrideAndPersist,
   deleteJobWeightOverrideAndPersist,
-  loadFromDisk,
+  hydrateStoreFromDisk,
 } from "@/lib/reference-json-persistence";
 import { OPEN_JOBS } from "@/data/reference/jobs";
-
-function hydrateIfEmpty() {
-  if (Object.keys(getAllJobWeightOverrides()).length === 0) {
-    try {
-      const snap = loadFromDisk();
-      setScoringWeights(snap.scoringWeights);
-      for (const [k, v] of Object.entries(snap.jobWeightOverrides)) {
-        setJobWeightOverride(k, v);
-      }
-    } catch { /* no disk data yet */ }
-  }
-}
 
 function isValidWeights(w: unknown): w is ScoringWeights {
   if (!w || typeof w !== "object") return false;
@@ -37,7 +25,7 @@ function isValidWeights(w: unknown): w is ScoringWeights {
 
 /** GET /api/reference/job-weights — returns overrides + effective weights for every open job */
 export async function GET() {
-  hydrateIfEmpty();
+  hydrateStoreFromDisk();
   const overrides = getAllJobWeightOverrides();
   const jobs = OPEN_JOBS.map((j) => ({
     job_id: j.id,

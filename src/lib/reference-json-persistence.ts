@@ -26,12 +26,16 @@ import {
   setStatusOverride, getAllStatusOverrides,
   setScoringWeights, getScoringWeights,
   setJobWeightOverride, getJobWeightOverride, getAllJobWeightOverrides, deleteJobWeightOverride,
+  addHiredEvent, getHiredEvents,
+  addBonusFlag, getBonusFlags, updateBonusFlag,
   type SubmittedReferral,
   type LiveMatchRecord,
   type LivePoolEntry,
   type RecruiterDecision,
   type LiveAuditEvent,
   type ScoringWeights,
+  type HiredEvent,
+  type BonusFlag,
 } from "@/lib/reference-store";
 
 // ── Types (mirrored for disk shape) ────────────────────────────────────────
@@ -55,7 +59,12 @@ export interface StoreSnapshot {
   statusOverrides: Record<string, string>;
   scoringWeights: PersistedScoringWeights;
   jobWeightOverrides: Record<string, PersistedScoringWeights>;
+  hiredEvents: HiredEvent[];
+  bonusFlags: BonusFlag[];
 }
+
+// re-export for consumers that import from here
+export type { HiredEvent, BonusFlag };
 
 // ── File paths ──────────────────────────────────────────────────────────────
 
@@ -71,6 +80,8 @@ const FILES = {
   statusOverrides:    path.join(JSON_DIR, "status-overrides.json"),
   scoringWeights:     path.join(JSON_DIR, "scoring-weights.json"),
   jobWeightOverrides: path.join(JSON_DIR, "job-weight-overrides.json"),
+  hiredEvents:        path.join(JSON_DIR, "hired-events.json"),
+  bonusFlags:         path.join(JSON_DIR, "bonus-flags.json"),
 } as const;
 
 // ── Internal helpers ────────────────────────────────────────────────────────
@@ -121,6 +132,8 @@ export function loadFromDisk(): StoreSnapshot {
       skill: 50, experience: 25, location: 15, seniority: 10,
     }),
     jobWeightOverrides: readJson<Record<string, PersistedScoringWeights>>(FILES.jobWeightOverrides, {}),
+    hiredEvents:        readJson<HiredEvent[]>(FILES.hiredEvents, []),
+    bonusFlags:         readJson<BonusFlag[]>(FILES.bonusFlags, []),
   };
 }
 
@@ -135,6 +148,8 @@ export function saveToDisk(snapshot: StoreSnapshot): void {
   writeJson(FILES.statusOverrides,    snapshot.statusOverrides);
   writeJson(FILES.scoringWeights,     snapshot.scoringWeights);
   writeJson(FILES.jobWeightOverrides, snapshot.jobWeightOverrides);
+  writeJson(FILES.hiredEvents,        snapshot.hiredEvents);
+  writeJson(FILES.bonusFlags,         snapshot.bonusFlags);
 }
 
 // ── Wired functions (store mutation + disk write) ───────────────────────────
@@ -214,6 +229,51 @@ export function setJobWeightOverrideAndPersist(jobId: string, weights: ScoringWe
 export function deleteJobWeightOverrideAndPersist(jobId: string): void {
   deleteJobWeightOverride(jobId);
   writeJson(FILES.jobWeightOverrides, getAllJobWeightOverrides());
+}
+
+/** Record a hired event and immediately persist to disk (idempotent per entity). */
+export function addHiredEventAndPersist(event: HiredEvent): void {
+  addHiredEvent(event);
+  writeJson(FILES.hiredEvents, getHiredEvents());
+}
+
+/** Add a bonus flag and immediately persist to disk (idempotent per referral). */
+export function addBonusFlagAndPersist(flag: BonusFlag): void {
+  addBonusFlag(flag);
+  writeJson(FILES.bonusFlags, getBonusFlags());
+}
+
+/** Update a bonus flag status and immediately persist to disk. */
+export function updateBonusFlagAndPersist(
+  flagId: string,
+  patch: Partial<Pick<BonusFlag, "status" | "processed_at" | "notes">>
+): boolean {
+  const updated = updateBonusFlag(flagId, patch);
+  if (updated) writeJson(FILES.bonusFlags, getBonusFlags());
+  return updated;
+}
+
+// ── Shared hydration helper ─────────────────────────────────────────────────
+// Call this at the top of any API route handler instead of maintaining a
+// local hydrateIfEmpty() copy in each file.
+
+export function hydrateStoreFromDisk(): void {
+  // Only hydrate when the in-memory store is empty (server cold-start / restart)
+  if (getReferrals().length > 0) return;
+  try {
+    const snap = loadFromDisk();
+    for (const r  of snap.referrals)                          addReferral(r);
+    for (const m  of snap.matches)                            addLiveMatchRecord(m);
+    for (const p  of snap.poolEntries)                        addLivePoolEntry(p);
+    for (const d  of snap.decisions)                          setDecision(d);
+    for (const id of snap.rejectedIds)                        rejectReferral(id);
+    for (const e  of snap.auditEvents)                        addLiveAuditEvent(e);
+    for (const [k, v] of Object.entries(snap.statusOverrides))setStatusOverride(k, v);
+    setScoringWeights(snap.scoringWeights);
+    for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
+    for (const e  of snap.hiredEvents)                        addHiredEvent(e);
+    for (const f  of snap.bonusFlags)                         addBonusFlag(f);
+  } catch { /* no disk data yet — first run */ }
 }
 
 // ── Contact event persistence (file-direct, no in-memory store needed) ────────

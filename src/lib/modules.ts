@@ -54,6 +54,7 @@ export const AI_MODULES: AIModule[] = [
       { name: "Talent Pool", path: "/reference/pool", icon: "checklist" },
       { name: "Jobs", path: "/reference/jobs", icon: "HR" },
       { name: "Scoring Config", path: "/reference/scoring-config", icon: "analytics-dashboard" },
+      { name: "Analytics", path: "/reference/analytics", icon: "analytics-dashboard" },
     ],
   },
   {

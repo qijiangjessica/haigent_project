@@ -58,7 +58,14 @@ export async function POST(request: NextRequest) {
     }
 
     const today = new Date().toISOString().slice(0, 10);
-    const matches = getLiveMatchRecords(referral_id);
+    // Deduplicate: keep the latest match record per posting_id across all re-score runs
+    const allMatches = getLiveMatchRecords(referral_id);
+    const latestByPosting = allMatches.reduce<Record<string, typeof allMatches[0]>>((acc, m) => {
+      const existing = acc[m.posting_id];
+      if (!existing || m.evaluated_date >= existing.evaluated_date) acc[m.posting_id] = m;
+      return acc;
+    }, {});
+    const matches = Object.values(latestByPosting);
 
     // Derive skill_tags from claimed skills (user_input passthrough)
     const skillTags: string[] =

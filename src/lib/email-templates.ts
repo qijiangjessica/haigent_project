@@ -593,3 +593,54 @@ export function statusChangeReferrer(d: StatusChangeReferrerData): TemplateResul
 
   return { subject, html: wrap(body) };
 }
+
+// ── SLA alert — recruiter notification ─────────────────────────────
+
+export interface SlaAlertData {
+  slaDays: number;
+  breachedReferrals: {
+    referralId: string;
+    candidateName: string;
+    referrerName: string;
+    daysInReview: number;
+    submittedAt: string;
+    referralUrl: string;
+  }[];
+}
+
+export function slaAlertRecruiter(d: SlaAlertData): TemplateResult {
+  const count   = d.breachedReferrals.length;
+  const subject = `SLA Alert: ${count} referral${count !== 1 ? "s" : ""} stuck in PROCEED for >${d.slaDays} days`;
+
+  const rows = d.breachedReferrals.map((r) => `
+    <tr style="border-bottom:1px solid ${BORDER};">
+      <td style="padding:8px 0;font-size:13px;color:${TEXT_MAIN};font-weight:600;">${r.candidateName}</td>
+      <td style="padding:8px 0 8px 16px;font-size:13px;color:${TEXT_MUTED};">${r.referrerName}</td>
+      <td style="padding:8px 0 8px 16px;font-size:13px;color:#dc2626;font-weight:600;">${r.daysInReview}d</td>
+      <td style="padding:8px 0 8px 16px;">
+        <a href="${r.referralUrl}" style="font-size:12px;color:${BRAND_TEAL};text-decoration:none;">View →</a>
+      </td>
+    </tr>
+  `).join("");
+
+  const body = `
+    ${heading(`SLA Breach: ${count} Referral${count !== 1 ? "s" : ""} Overdue`, "#dc2626")}
+    ${subtext(`The following referred candidates have been in the Active Pipeline (PROCEED) state for more than ${d.slaDays} days without progressing to hired. Immediate action may be required.`)}
+    <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:16px 0;">
+      <thead>
+        <tr style="border-bottom:2px solid ${BORDER};">
+          <th style="text-align:left;padding:6px 0;font-size:11px;color:${TEXT_MUTED};font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Candidate</th>
+          <th style="text-align:left;padding:6px 0 6px 16px;font-size:11px;color:${TEXT_MUTED};font-weight:600;text-transform:uppercase;">Referrer</th>
+          <th style="text-align:left;padding:6px 0 6px 16px;font-size:11px;color:${TEXT_MUTED};font-weight:600;text-transform:uppercase;">Days Waiting</th>
+          <th style="text-align:left;padding:6px 0 6px 16px;font-size:11px;color:${TEXT_MUTED};font-weight:600;text-transform:uppercase;">Action</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="margin:16px 0 0;font-size:13px;color:${TEXT_MUTED};line-height:1.5;">
+      SLA threshold: <strong>${d.slaDays} days</strong>. Adjust this threshold in the Analytics dashboard.
+    </p>
+  `;
+
+  return { subject, html: wrap(body) };
+}

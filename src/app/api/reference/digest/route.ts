@@ -14,37 +14,15 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getReferrals } from "@/lib/reference-store";
 import {
-  getReferrals,
-  addReferral, addLiveMatchRecord, addLivePoolEntry,
-  setDecision, rejectReferral, addLiveAuditEvent,
-  setStatusOverride, setScoringWeights, setJobWeightOverride,
-} from "@/lib/reference-store";
-import {
-  loadFromDisk,
+  hydrateStoreFromDisk,
   getContactedCountByReferral,
 } from "@/lib/reference-json-persistence";
 import { sendEmail, appUrl } from "@/lib/email";
 import { staleReferralDigest } from "@/lib/email-templates";
 
 const STALE_DAYS = 14;
-
-function hydrateIfEmpty() {
-  if (getReferrals().length === 0) {
-    try {
-      const snap = loadFromDisk();
-      for (const r of snap.referrals)    addReferral(r);
-      for (const m of snap.matches)      addLiveMatchRecord(m);
-      for (const p of snap.poolEntries)  addLivePoolEntry(p);
-      for (const d of snap.decisions)    setDecision(d);
-      for (const id of snap.rejectedIds) rejectReferral(id);
-      for (const e of snap.auditEvents)  addLiveAuditEvent(e);
-      for (const [k, v] of Object.entries(snap.statusOverrides)) setStatusOverride(k, v);
-      setScoringWeights(snap.scoringWeights);
-      for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
-    } catch { /* no disk data yet */ }
-  }
-}
 
 export async function POST(request: NextRequest) {
   // Optional bearer-token guard
@@ -61,7 +39,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "RECRUITER_EMAIL not configured" }, { status: 500 });
   }
 
-  hydrateIfEmpty();
+  hydrateStoreFromDisk();
 
   const now = Date.now();
   const contactedCount = getContactedCountByReferral();
@@ -107,7 +85,7 @@ export async function POST(request: NextRequest) {
 
 // GET — preview which referrals would be included (no email sent)
 export async function GET() {
-  hydrateIfEmpty();
+  hydrateStoreFromDisk();
 
   const now = Date.now();
   const contactedCount = getContactedCountByReferral();

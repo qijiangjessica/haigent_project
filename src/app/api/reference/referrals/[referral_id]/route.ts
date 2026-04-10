@@ -2,21 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   getReferrals,
-  addReferral,
   getLiveMatchRecords,
   getEffectiveWeights,
   getLivePoolEntry,
-  addLiveMatchRecord,
-  addLivePoolEntry,
-  setDecision,
-  rejectReferral,
-  addLiveAuditEvent,
-  setStatusOverride,
-  setScoringWeights,
-  setJobWeightOverride,
   type LiveMatchRecord,
 } from "@/lib/reference-store";
-import { updateReferralAndPersist, addMatchesAndPersist, loadFromDisk } from "@/lib/reference-json-persistence";
+import {
+  updateReferralAndPersist, addMatchesAndPersist,
+  addAuditEventAndPersist, addHiredEventAndPersist,
+  addBonusFlagAndPersist, hydrateStoreFromDisk,
+} from "@/lib/reference-json-persistence";
 import { OPEN_JOBS, type ReferenceJob } from "@/data/reference/jobs";
 
 // ── Scoring helpers (identical pattern to submit/rescore routes) ─────────────
@@ -152,28 +147,11 @@ Respond ONLY with a valid JSON array, no other text:
 
 // ── Route handlers ───────────────────────────────────────────────────────────
 
-function hydrateIfEmpty() {
-  if (getReferrals().length === 0) {
-    try {
-      const snap = loadFromDisk();
-      for (const r of snap.referrals) addReferral(r);
-      for (const m of snap.matches) addLiveMatchRecord(m);
-      for (const p of snap.poolEntries) addLivePoolEntry(p);
-      for (const d of snap.decisions) setDecision(d);
-      for (const id of snap.rejectedIds) rejectReferral(id);
-      for (const e of snap.auditEvents) addLiveAuditEvent(e);
-      for (const [k, v] of Object.entries(snap.statusOverrides)) setStatusOverride(k, v);
-      setScoringWeights(snap.scoringWeights);
-      for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
-    } catch { /* no disk data yet */ }
-  }
-}
-
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ referral_id: string }> }
 ) {
-  hydrateIfEmpty();
+  hydrateStoreFromDisk();
   const { referral_id } = await params;
 
   const referral = getReferrals().find((r) => r.referral_id === referral_id);
@@ -195,7 +173,7 @@ export async function PATCH(
   { params }: { params: Promise<{ referral_id: string }> }
 ) {
   try {
-    hydrateIfEmpty();
+    hydrateStoreFromDisk();
     const { referral_id } = await params;
 
     const before = getReferrals().find((r) => r.referral_id === referral_id);
@@ -213,6 +191,8 @@ export async function PATCH(
       "extra_filenames", "skills_claimed",
       // Recruiter-only (no extra guard here — role enforcement is UI-side for now)
       "candidate_name", "candidate_email", "referrer_name", "referrer_emp_id",
+      // Pipeline promotion fields (hired_at is set automatically — not client-supplied)
+      "pipeline_status", "in_review_at",
     ]);
 
     const patch: Record<string, unknown> = {};
@@ -241,6 +221,61 @@ export async function PATCH(
     }
 
     const after = getReferrals().find((r) => r.referral_id === referral_id)!;
+
+    // Write audit event if pipeline_status changed
+    if (patch.pipeline_status && patch.pipeline_status !== before.pipeline_status) {
+      const now = new Date().toISOString();
+      const isHired = (patch.pipeline_status as string) === "hired";
+
+      // ── T1: Capture hired_at timestamp ─────────────────────────────────────
+      if (isHired) {
+        // Stamp hired_at directly on the referral record
+        updateReferralAndPersist(referral_id, { hired_at: now });
+
+        // Also write to the canonical hired-events log
+        addHiredEventAndPersist({
+          event_id:     `HIRE-${Date.now()}`,
+          entity_id:    referral_id,
+          entity_type:  "referral",
+          hired_at:     now,
+          referral_id:  referral_id,
+          submitted_at: before.submitted_at,
+        });
+
+        // ── Bonus trigger: auto-flag for HR bonus processing ───────────────
+        const daysToHire = Math.max(0, Math.round(
+          (new Date(now).getTime() - new Date(before.submitted_at).getTime()) / 86_400_000
+        ));
+        addBonusFlagAndPersist({
+          flag_id:        `BONUS-${Date.now()}`,
+          referral_id:    referral_id,
+          candidate_name: before.candidate_name,
+          referrer_name:  before.referrer_name,
+          referrer_emp_id: before.referrer_emp_id,
+          hired_at:       now,
+          submitted_at:   before.submitted_at,
+          days_to_hire:   daysToHire,
+          status:         "pending",
+          flagged_at:     now,
+          processed_at:   null,
+          notes:          null,
+        });
+      }
+
+      // ── T1: Audit event for every pipeline_status transition ───────────────
+      addAuditEventAndPersist({
+        event_id:    `EVT-PIPELINE-${Date.now()}`,
+        timestamp:   now,
+        actor:       "Recruiter",
+        actor_id:    "Recruiter",
+        event_type:  "StatusChange",
+        entity_type: "referral",
+        entity_id:   referral_id,
+        before_state: before.pipeline_status ?? "pending_review",
+        after_state:  patch.pipeline_status as string,
+        notes:       `Pipeline status: ${before.pipeline_status ?? "pending_review"} → ${patch.pipeline_status}${isHired ? " [hired_at recorded]" : ""}`,
+      });
+    }
 
     // Determine whether any scoring-relevant field changed
     const needsRescore = Object.keys(patch).some((k) => RESCORE_FIELDS.has(k));

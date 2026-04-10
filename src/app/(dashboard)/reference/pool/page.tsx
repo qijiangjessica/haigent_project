@@ -7,8 +7,8 @@ import { TALENT_POOL } from "@/data/reference/talent-pool";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
 import { MATCH_RECORDS } from "@/data/reference/matches";
-import { REFERENCE_JOBS } from "@/data/reference/jobs";
-import { Search, Download, Sparkles, Loader2, ChevronDown, ChevronUp, AlertCircle, TrendingUp, Package, XCircle, CheckCircle2, AlertTriangle, Filter, Users } from "lucide-react";
+import { REFERENCE_JOBS, OPEN_JOBS } from "@/data/reference/jobs";
+import { Search, Download, Sparkles, Loader2, ChevronDown, ChevronUp, AlertCircle, TrendingUp, Package, XCircle, CheckCircle2, AlertTriangle, Filter, Users, Zap } from "lucide-react";
 import { toCsv, downloadCsv } from "@/lib/csv";
 
 interface LivePoolEntry {
@@ -135,6 +135,28 @@ export default function TalentPoolPage() {
   const [promotingLoading, setPromotingLoading] = useState(false);
   const [promoteError, setPromoteError] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [activatedSet, setActivatedSet] = useState<Set<string>>(new Set());
+
+  async function handleActivate(referralId: string) {
+    setActivatingId(referralId);
+    try {
+      const res = await fetch(`/api/reference/referrals/${referralId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pipeline_status: "in_review",
+          in_review_at: new Date().toISOString(),
+        }),
+      });
+      if (res.ok) {
+        setActivatedSet((prev) => new Set([...prev, referralId]));
+        setLivePoolEntries((prev) => prev.filter((e) => e.referral_id !== referralId));
+      }
+    } finally {
+      setActivatingId(null);
+    }
+  }
 
   function openPromoteForm(referralId: string, defaultLocation: string) {
     setActivePromoteId(referralId);
@@ -609,12 +631,42 @@ export default function TalentPoolPage() {
             {/* Live pool entries (promoted from submitted referrals) */}
             {livePoolEntries.map((entry) => {
               const entryScoreExpanded = expandedScores.has(`lpe-${entry.pool_id}`);
+              const entryLiveMatches = liveMatches.filter((m) => m.referral_id === entry.referral_id);
+              const bestLiveMatch = entryLiveMatches.length > 0
+                ? entryLiveMatches.reduce((a, b) => a.match_score >= b.match_score ? a : b)
+                : null;
+              const hasStrongMatch = bestLiveMatch?.classification === "Strong Match";
               const bestScore = entry.match_evaluation_history.length > 0
                 ? Math.max(...entry.match_evaluation_history.map((h) => h.score))
-                : null;
+                : bestLiveMatch?.match_score ?? null;
+              const isActivating = activatingId === entry.referral_id;
+              const wasActivated = activatedSet.has(entry.referral_id);
 
               return (
-                <div key={entry.pool_id} className="bg-white rounded-xl border border-border shadow-sm p-5">
+                <div key={entry.pool_id} className={`bg-white rounded-xl border shadow-sm p-5 ${hasStrongMatch ? "border-brand-green/40" : "border-border"}`}>
+                  {/* Strong match banner */}
+                  {hasStrongMatch && bestLiveMatch && (
+                    <div className="mb-3 flex items-center justify-between gap-3 rounded-lg bg-brand-green/8 border border-brand-green/25 px-3 py-2">
+                      <div className="flex items-center gap-2 text-xs text-brand-green font-medium">
+                        <Zap className="h-3.5 w-3.5 flex-shrink-0" />
+                        Strong Match — {OPEN_JOBS.find((j) => j.id === bestLiveMatch.posting_id)?.title ?? bestLiveMatch.posting_id} ({bestLiveMatch.match_score}/100)
+                      </div>
+                      {wasActivated ? (
+                        <span className="text-xs text-brand-green font-medium flex items-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Moved to Active Pipeline
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleActivate(entry.referral_id)}
+                          disabled={isActivating}
+                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand-green text-white font-medium hover:bg-brand-green/90 disabled:opacity-50 transition-colors flex-shrink-0"
+                        >
+                          {isActivating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                          {isActivating ? "Activating…" : "Activate to Pipeline"}
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -705,8 +757,8 @@ export default function TalentPoolPage() {
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {entry.match_evaluation_history.map((h) => (
-                          <div key={h.posting_id} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
+                        {entry.match_evaluation_history.map((h, hi) => (
+                          <div key={`${h.posting_id}-${hi}`} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
                             <span className="text-muted-foreground">
                               {REFERENCE_JOBS.find((j) => j.id === h.posting_id)?.title ?? h.posting_id}
                             </span>
@@ -717,10 +769,26 @@ export default function TalentPoolPage() {
                     </div>
                   )}
 
-                  <div className="mt-3 pt-3 border-t border-border flex justify-end">
+                  <div className="mt-3 pt-3 border-t border-border flex items-center justify-between gap-3">
+                    {!hasStrongMatch && (
+                      wasActivated ? (
+                        <span className="text-xs text-brand-green font-medium flex items-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Moved to Active Pipeline
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleActivate(entry.referral_id)}
+                          disabled={isActivating}
+                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-brand-teal hover:border-brand-teal/40 disabled:opacity-50 transition-colors"
+                        >
+                          {isActivating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                          {isActivating ? "Activating…" : "Move to Active Pipeline"}
+                        </button>
+                      )
+                    )}
                     <Link
                       href={`/reference/referrals/${entry.referral_id}`}
-                      className="text-xs text-brand-teal font-medium hover:underline"
+                      className="text-xs text-brand-teal font-medium hover:underline ml-auto"
                     >
                       View referral record →
                     </Link>

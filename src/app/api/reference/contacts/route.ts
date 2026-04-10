@@ -1,32 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addContactAndPersist, getContactsByReferralId, loadFromDisk } from "@/lib/reference-json-persistence";
-import {
-  getReferrals,
-  addReferral, addLiveMatchRecord, addLivePoolEntry,
-  setDecision, rejectReferral, addLiveAuditEvent,
-  setStatusOverride, setScoringWeights, setJobWeightOverride,
-} from "@/lib/reference-store";
+import { addContactAndPersist, getContactsByReferralId, hydrateStoreFromDisk } from "@/lib/reference-json-persistence";
+import { getReferrals } from "@/lib/reference-store";
 import { sendEmail, appUrl } from "@/lib/email";
 import { candidateContactedReferrer } from "@/lib/email-templates";
 import { OPEN_JOBS } from "@/data/reference/jobs";
 import type { ContactEvent } from "@/types";
-
-function hydrateIfEmpty() {
-  if (getReferrals().length === 0) {
-    try {
-      const snap = loadFromDisk();
-      for (const r of snap.referrals)    addReferral(r);
-      for (const m of snap.matches)      addLiveMatchRecord(m);
-      for (const p of snap.poolEntries)  addLivePoolEntry(p);
-      for (const d of snap.decisions)    setDecision(d);
-      for (const id of snap.rejectedIds) rejectReferral(id);
-      for (const e of snap.auditEvents)  addLiveAuditEvent(e);
-      for (const [k, v] of Object.entries(snap.statusOverrides)) setStatusOverride(k, v);
-      setScoringWeights(snap.scoringWeights);
-      for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
-    } catch { /* no disk data yet */ }
-  }
-}
 
 const VALID_METHODS = ["email", "phone", "linkedin", "other"] as const;
 
@@ -41,7 +19,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    hydrateIfEmpty();
+    hydrateStoreFromDisk();
 
     const body = await request.json() as Partial<ContactEvent>;
 

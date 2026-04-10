@@ -141,5 +141,126 @@
     "subject": "Alex Jane has been added to the talent pool",
     "status": "sent",
     "error_message": null
+  },
+  {
+    "log_id": "LOG-1775680539926-PGFE",
+    "sent_at": "2026-04-08T20:35:39.926Z",
+    "notification_type": "submission_confirmation_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260408-YIWF",
+    "subject": "Your referral for Alex Nue has been received",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775680539969-GHBZ",
+    "sent_at": "2026-04-08T20:35:39.969Z",
+    "notification_type": "match_result_recruiter",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "recruiter",
+    "referral_id": "REF-20260408-YIWF",
+    "subject": "Strong match found — Alex Nue (1 role)",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775680540048-PBLI",
+    "sent_at": "2026-04-08T20:35:40.048Z",
+    "notification_type": "new_referral_recruiter",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "recruiter",
+    "referral_id": "REF-20260408-YIWF",
+    "subject": "New referral submitted: Alex Nue",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775680540505-G14K",
+    "sent_at": "2026-04-08T20:35:40.505Z",
+    "notification_type": "match_result_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260408-YIWF",
+    "subject": "Match found for your referral — Alex Nue scored 72/100",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775680540754-TO31",
+    "sent_at": "2026-04-08T20:35:40.754Z",
+    "notification_type": "candidate_referred",
+    "to_email": "alex@gmail.com",
+    "to_role": "candidate",
+    "referral_id": "REF-20260408-YIWF",
+    "subject": "You've been referred for a Open Pool role at HaiGent",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775682704341-4E64",
+    "sent_at": "2026-04-08T21:11:44.341Z",
+    "notification_type": "new_referral_recruiter",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "recruiter",
+    "referral_id": "REF-20260408-Y38I",
+    "subject": "New referral submitted: Alexa Nuego",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775682704550-DFNJ",
+    "sent_at": "2026-04-08T21:11:44.550Z",
+    "notification_type": "submission_confirmation_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260408-Y38I",
+    "subject": "Your referral for Alexa Nuego has been received",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775682704739-E12I",
+    "sent_at": "2026-04-08T21:11:44.739Z",
+    "notification_type": "match_result_recruiter",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "recruiter",
+    "referral_id": "REF-20260408-Y38I",
+    "subject": "Match results ready — Alexa Nuego",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775682705164-GZHH",
+    "sent_at": "2026-04-08T21:11:45.164Z",
+    "notification_type": "match_result_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260408-Y38I",
+    "subject": "Match found for your referral — Alexa Nuego scored 68/100",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775682707478-6JCK",
+    "sent_at": "2026-04-08T21:11:47.478Z",
+    "notification_type": "candidate_referred",
+    "to_email": "alexa@gmail.com",
+    "to_role": "candidate",
+    "referral_id": "REF-20260408-Y38I",
+    "subject": "You've been referred for a Open Pool role at HaiGent",
+    "status": "sent",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1775835381104-O5AI",
+    "sent_at": "2026-04-10T15:36:21.104Z",
+    "notification_type": "status_change_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260408-YIWF",
+    "subject": "Update on your referral — Alex Nue: Moving Forward",
+    "status": "sent",
+    "error_message": null
   }
 ]

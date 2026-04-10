@@ -38,6 +38,9 @@ interface SubmittedReferral {
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
   skills_claimed?: string[];
+  pipeline_status?: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "hired";
+  in_review_at?: string | null;
+  hired_at?: string | null;
 }
 
 interface LiveMatchRecord {
@@ -173,6 +176,159 @@ function WhyThisScore({ m, skillsClaimed, requiredSkills, yoe, expMin, expMax, c
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── Candidate Pipeline Timeline (T3) ───────────────────────────────
+
+interface TimelineStage {
+  key: string;
+  label: string;
+  date: string | null;       // ISO timestamp or null if not reached
+  dayOffset: number | null;  // days from submitted_at (0 for submitted)
+  isStale?: boolean;         // true when stage exceeds benchmark
+  benchmarkDays?: number;
+}
+
+interface TimelineProps {
+  referral: SubmittedReferral;
+  firstContactedAt: string | null;
+  poolDateAdded: string | null;
+  avgDaysToHire: number | null;
+}
+
+function daysDiff(from: string, to: string): number {
+  return Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000));
+}
+
+function CandidateTimeline({ referral, firstContactedAt, poolDateAdded, avgDaysToHire }: TimelineProps) {
+  const submitted = referral.submitted_at;
+  const inReviewAt = referral.in_review_at ?? null;
+  const hiredAt    = referral.hired_at ?? null;
+
+  // Benchmark: stale if stage occupies > 50 % of avg TTH
+  const staleBenchmark = avgDaysToHire != null ? Math.round(avgDaysToHire * 0.5) : null;
+
+  const now = new Date().toISOString();
+
+  const stages: TimelineStage[] = [
+    {
+      key:    "submitted",
+      label:  "Submitted",
+      date:   submitted,
+      dayOffset: 0,
+    },
+    {
+      key:    "contacted",
+      label:  "First Contacted",
+      date:   firstContactedAt,
+      dayOffset: firstContactedAt ? daysDiff(submitted, firstContactedAt) : null,
+      isStale: !firstContactedAt && staleBenchmark != null
+        ? daysDiff(submitted, now) > staleBenchmark
+        : false,
+      benchmarkDays: staleBenchmark ?? undefined,
+    },
+    {
+      key:    "review",
+      label:  "Active Pipeline",
+      date:   inReviewAt,
+      dayOffset: inReviewAt ? daysDiff(submitted, inReviewAt) : null,
+      isStale: !inReviewAt && firstContactedAt && staleBenchmark != null
+        ? daysDiff(firstContactedAt, now) > staleBenchmark
+        : false,
+      benchmarkDays: staleBenchmark ?? undefined,
+    },
+    {
+      key:    "pool",
+      label:  "Talent Pool",
+      date:   poolDateAdded,
+      dayOffset: poolDateAdded ? daysDiff(submitted, poolDateAdded) : null,
+    },
+    {
+      key:    "hired",
+      label:  "Hired",
+      date:   hiredAt,
+      dayOffset: hiredAt ? daysDiff(submitted, hiredAt) : null,
+    },
+  ];
+
+  const reachedCount = stages.filter((s) => s.date !== null).length;
+
+  return (
+    <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <TrendingUp className="h-4 w-4 text-brand-teal" />
+        <h2 className="text-sm font-semibold text-foreground">Pipeline Timeline</h2>
+        {avgDaysToHire != null && (
+          <span className="ml-auto text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+            Avg time-to-hire: {avgDaysToHire}d
+          </span>
+        )}
+      </div>
+
+      <div className="relative">
+        {/* Horizontal connector line */}
+        <div className="absolute top-4 left-0 right-0 h-px bg-border" />
+
+        <div className="relative flex items-start justify-between gap-2">
+          {stages.map((stage, i) => {
+            const reached  = stage.date !== null;
+            const isFuture = !reached;
+            const isLast   = i === stages.length - 1;
+
+            return (
+              <div key={stage.key} className={`flex flex-col items-center gap-1.5 flex-1 ${isLast ? "items-end" : i === 0 ? "items-start" : "items-center"}`}>
+                {/* Dot */}
+                <div className={`relative z-10 w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-colors ${
+                  reached
+                    ? "bg-brand-teal border-brand-teal text-white"
+                    : stage.isStale
+                      ? "bg-amber-50 border-amber-400 text-amber-500"
+                      : "bg-white border-border text-muted-foreground/40"
+                }`}>
+                  {reached ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : stage.isStale ? (
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  ) : (
+                    <Circle className="h-4 w-4" />
+                  )}
+                </div>
+
+                {/* Label */}
+                <p className={`text-[10px] font-medium text-center leading-tight ${reached ? "text-foreground" : "text-muted-foreground/50"}`}>
+                  {stage.label}
+                </p>
+
+                {/* Date / day offset */}
+                {reached && stage.date && (
+                  <p className="text-[9px] text-muted-foreground text-center">
+                    {stage.dayOffset === 0
+                      ? new Date(stage.date).toLocaleDateString("en-CA")
+                      : `Day ${stage.dayOffset}`}
+                  </p>
+                )}
+
+                {/* Stale warning */}
+                {isFuture && stage.isStale && stage.benchmarkDays != null && (
+                  <p className="text-[9px] text-amber-500 text-center font-medium">
+                    &gt;{stage.benchmarkDays}d stale
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Progress label */}
+      <p className="mt-3 text-xs text-muted-foreground">
+        {reachedCount} of {stages.length} stages complete
+        {hiredAt && referral.submitted_at && (
+          <> · Total time-to-hire: <span className="font-semibold text-foreground">{daysDiff(referral.submitted_at, hiredAt)} days</span></>
+        )}
+      </p>
     </div>
   );
 }
@@ -342,6 +498,10 @@ export default function ReferralDetailPage() {
   const [editStatus, setEditStatus] = useState<"idle" | "success" | "error">("idle");
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Timeline state
+  const [firstContactedAt, setFirstContactedAt] = useState<string | null>(null);
+  const [avgDaysToHire, setAvgDaysToHire] = useState<number | null>(null);
+
   // Contact tracking
   const [contactedPostingIds, setContactedPostingIds] = useState<Set<string>>(new Set());
   const [contactFormOpenId, setContactFormOpenId] = useState<string | null>(null);
@@ -422,8 +582,25 @@ export default function ReferralDetailPage() {
         fetch(`/api/reference/contacts?referral_id=${referral_id}`)
           .then((r) => r.json())
           .then((d) => {
-            const ids = new Set<string>((d.contacts ?? []).map((c: { posting_id: string }) => c.posting_id));
+            const contacts: { posting_id: string; contacted_at: string }[] = d.contacts ?? [];
+            const ids = new Set<string>(contacts.map((c) => c.posting_id));
             setContactedPostingIds(ids);
+            // Earliest contacted_at for timeline
+            if (contacts.length > 0) {
+              const earliest = contacts.reduce(
+                (min, c) => (c.contacted_at < min ? c.contacted_at : min),
+                contacts[0].contacted_at
+              );
+              setFirstContactedAt(earliest);
+            }
+          })
+          .catch(() => {});
+
+        // Fetch avg time-to-hire for stale benchmark
+        fetch("/api/reference/analytics/time-to-hire")
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.aggregations?.mean != null) setAvgDaysToHire(d.aggregations.mean);
           })
           .catch(() => {});
       })
@@ -955,6 +1132,14 @@ Cover: overall candidate profile strength based on the match scores, what the AI
           })}
         </div>
       </div>
+
+      {/* ── Pipeline Timeline (T3) ── */}
+      <CandidateTimeline
+        referral={referral}
+        firstContactedAt={firstContactedAt}
+        poolDateAdded={poolEntry?.date_added ?? null}
+        avgDaysToHire={avgDaysToHire}
+      />
 
       {/* ── AI Recruiter Summary ── */}
       <div className="bg-white rounded-xl border border-border shadow-sm p-5">

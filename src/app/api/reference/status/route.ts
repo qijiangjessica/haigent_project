@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getAllStatusOverrides, getReferrals,
-  addReferral, addLiveMatchRecord, addLivePoolEntry,
-  setDecision, rejectReferral, addLiveAuditEvent,
-  setStatusOverride, setScoringWeights, setJobWeightOverride,
 } from "@/lib/reference-store";
-import { setStatusOverrideAndPersist, loadFromDisk } from "@/lib/reference-json-persistence";
+import {
+  setStatusOverrideAndPersist, addAuditEventAndPersist,
+  addHiredEventAndPersist, hydrateStoreFromDisk,
+} from "@/lib/reference-json-persistence";
 import { sendEmail, appUrl } from "@/lib/email";
 import { statusChangeReferrer, candidateHiredReferrer } from "@/lib/email-templates";
 
@@ -20,30 +20,14 @@ function toDecisionKey(status: string): DecisionKey | null {
   return null;
 }
 
-function hydrateIfEmpty() {
-  if (getReferrals().length === 0) {
-    try {
-      const snap = loadFromDisk();
-      for (const r of snap.referrals)    addReferral(r);
-      for (const m of snap.matches)      addLiveMatchRecord(m);
-      for (const p of snap.poolEntries)  addLivePoolEntry(p);
-      for (const d of snap.decisions)    setDecision(d);
-      for (const id of snap.rejectedIds) rejectReferral(id);
-      for (const e of snap.auditEvents)  addLiveAuditEvent(e);
-      for (const [k, v] of Object.entries(snap.statusOverrides)) setStatusOverride(k, v);
-      setScoringWeights(snap.scoringWeights);
-      for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
-    } catch { /* no disk data yet */ }
-  }
-}
-
 export async function GET() {
+  hydrateStoreFromDisk();
   return NextResponse.json({ overrides: getAllStatusOverrides() });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    hydrateIfEmpty();
+    hydrateStoreFromDisk();
 
     const body = await request.json();
 
@@ -54,14 +38,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Persist override to store + disk
-    setStatusOverrideAndPersist(body.candidate_id, body.status);
+    const candidateId = body.candidate_id as string;
+    const normalised  = (body.status as string).toUpperCase();
+    const hiredAt     = new Date().toISOString();
 
-    // Notify referrer based on the new status
-    const referral = getReferrals().find((r) => r.referral_id === body.candidate_id);
+    // Capture the previous status for the audit event
+    const allOverrides = getAllStatusOverrides();
+    const beforeState  = allOverrides[candidateId] ?? "unknown";
+
+    // Persist override to store + disk
+    setStatusOverrideAndPersist(candidateId, body.status);
+
+    // ── T1: Hired event capture (seeded candidate path) ──────────────────────
+    if (normalised === "HIRED") {
+      const referral = getReferrals().find((r) => r.referral_id === candidateId);
+      addHiredEventAndPersist({
+        event_id:     `HIRE-${Date.now()}`,
+        entity_id:    candidateId,
+        entity_type:  referral ? "referral" : "candidate",
+        hired_at:     hiredAt,
+        referral_id:  referral?.referral_id ?? null,
+        submitted_at: referral?.submitted_at ?? null,
+      });
+    }
+
+    // ── T1: Audit event for every status transition ───────────────────────────
+    addAuditEventAndPersist({
+      event_id:    `EVT-STATUS-${Date.now()}`,
+      timestamp:   hiredAt,
+      actor:       "Recruiter",
+      actor_id:    "Recruiter",
+      event_type:  "StatusChange",
+      entity_type: "candidate",
+      entity_id:   candidateId,
+      before_state: beforeState,
+      after_state:  body.status as string,
+      notes:        `Status override: ${beforeState} → ${body.status}${normalised === "HIRED" ? " [hired_at recorded]" : ""}`,
+    });
+
+    // ── Email notifications ───────────────────────────────────────────────────
+    const referral = getReferrals().find((r) => r.referral_id === candidateId);
     if (referral?.referrer_email) {
       const referralUrl = appUrl(`/reference/referrals/${referral.referral_id}`);
-      const normalised = (body.status as string).toUpperCase();
 
       if (normalised === "HIRED") {
         // E5: Candidate hired — trigger referral bonus process
@@ -88,7 +106,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, hired_at: normalised === "HIRED" ? hiredAt : null });
   } catch (error) {
     console.error("Status override error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

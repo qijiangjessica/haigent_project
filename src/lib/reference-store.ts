@@ -84,6 +84,40 @@ export interface SubmittedReferral {
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
   skills_claimed: string[];
+  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "hired";
+  in_review_at: string | null;   // ISO timestamp when recruiter moved to active pipeline
+  hired_at: string | null;       // ISO timestamp when marked hired
+}
+
+// ── Hired events (seeded candidates + referrals) ───────────────────────────
+// Canonical record of the moment a candidate/referral was marked as hired.
+// Referrals also store hired_at directly on SubmittedReferral for convenience;
+// this table is the single source of truth for Time-to-Hire queries.
+
+export interface HiredEvent {
+  event_id: string;          // e.g. "HIRE-<nanoid>"
+  entity_id: string;         // candidate_id (seeded) OR referral_id (submitted)
+  entity_type: "candidate" | "referral";
+  hired_at: string;          // ISO timestamp
+  referral_id: string | null; // for seeded candidates, null unless linked
+  submitted_at: string | null; // copied from referral for quick TTH calculation
+}
+
+const hiredEvents: HiredEvent[] = [];
+
+export function addHiredEvent(e: HiredEvent): void {
+  // Overwrite if same entity already exists (idempotent)
+  const idx = hiredEvents.findIndex((x) => x.entity_id === e.entity_id);
+  if (idx !== -1) hiredEvents[idx] = e;
+  else hiredEvents.push(e);
+}
+
+export function getHiredEvents(): HiredEvent[] {
+  return [...hiredEvents];
+}
+
+export function getHiredEvent(entityId: string): HiredEvent | undefined {
+  return hiredEvents.find((e) => e.entity_id === entityId);
 }
 
 const referrals: SubmittedReferral[] = [];
@@ -241,6 +275,52 @@ export function rejectReferral(referralId: string): void {
 
 export function getRejectedReferralIds(): string[] {
   return Array.from(rejectedReferralIds);
+}
+
+// ── Bonus flags ────────────────────────────────────────────────────
+// Auto-created when a referral is marked hired. HR uses these to
+// track bonus payment processing.
+
+export interface BonusFlag {
+  flag_id: string;           // e.g. "BONUS-<timestamp>"
+  referral_id: string;
+  candidate_name: string;
+  referrer_name: string;
+  referrer_emp_id: string;
+  hired_at: string;          // ISO timestamp
+  submitted_at: string;
+  days_to_hire: number;
+  status: "pending" | "processing" | "paid" | "ineligible";
+  flagged_at: string;        // when the flag was auto-created
+  processed_at: string | null;
+  notes: string | null;
+}
+
+const bonusFlags: BonusFlag[] = [];
+
+export function addBonusFlag(flag: BonusFlag): void {
+  // Idempotent — one flag per referral
+  const idx = bonusFlags.findIndex((f) => f.referral_id === flag.referral_id);
+  if (idx !== -1) bonusFlags[idx] = flag;
+  else bonusFlags.push(flag);
+}
+
+export function getBonusFlags(): BonusFlag[] {
+  return [...bonusFlags];
+}
+
+export function getBonusFlag(referralId: string): BonusFlag | undefined {
+  return bonusFlags.find((f) => f.referral_id === referralId);
+}
+
+export function updateBonusFlag(
+  flagId: string,
+  patch: Partial<Pick<BonusFlag, "status" | "processed_at" | "notes">>
+): boolean {
+  const idx = bonusFlags.findIndex((f) => f.flag_id === flagId);
+  if (idx === -1) return false;
+  bonusFlags[idx] = { ...bonusFlags[idx], ...patch };
+  return true;
 }
 
 // ── Status overrides ───────────────────────────────────────────────

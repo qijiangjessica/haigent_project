@@ -281,6 +281,9 @@ export async function POST(request: NextRequest) {
       is_duplicate: !!duplicate,
       duplicate_candidate_id: duplicateSeeded?.candidate_id ?? null,
       skills_claimed: skillList,
+      pipeline_status: "pending_review",
+      in_review_at: null,
+      hired_at: null,
     };
 
     // Persist referral to store + disk

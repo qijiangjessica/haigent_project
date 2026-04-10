@@ -91,7 +91,9 @@ export type NotificationType =
   | "candidate_contacted_referrer"
   | "candidate_hired_referrer"
   | "candidate_promoted_to_pool"
-  | "score_improved_recruiter";
+  | "score_improved_recruiter"
+  | "sla_alert_recruiter"
+  | "bonus_flag_created";
 
 export interface SendEmailOptions {
   to: string;
