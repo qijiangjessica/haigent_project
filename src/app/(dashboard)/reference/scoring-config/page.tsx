@@ -92,8 +92,9 @@ function computeScore(
   );
 }
 
-function classifyScore(score: number): "Strong Match" | "Partial Match" | "No Match" {
-  return score >= 70 ? "Strong Match" : score >= 50 ? "Partial Match" : "No Match";
+// classifyScore is now threshold-aware — called with thresholds from state
+function classifyScore(score: number, t: { strong_match: number; partial_match: number }): "Strong Match" | "Partial Match" | "No Match" {
+  return score >= t.strong_match ? "Strong Match" : score >= t.partial_match ? "Partial Match" : "No Match";
 }
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
@@ -143,6 +144,19 @@ export default function ScoringConfigPage() {
   } | null>(null);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
 
+  // Threshold state
+  interface ThresholdConfig { strong_match: number; partial_match: number }
+  const DEFAULT_THRESHOLDS: ThresholdConfig = { strong_match: 70, partial_match: 50 };
+  const [thresholds, setThresholds] = useState<ThresholdConfig>(DEFAULT_THRESHOLDS);
+  const [savedThresholds, setSavedThresholds] = useState<ThresholdConfig>(DEFAULT_THRESHOLDS);
+  const [thresholdSaving, setThresholdSaving] = useState(false);
+  const [thresholdStatus, setThresholdStatus] = useState<"idle" | "success" | "error">("idle");
+  const isThresholdDirty =
+    thresholds.strong_match !== savedThresholds.strong_match ||
+    thresholds.partial_match !== savedThresholds.partial_match;
+  const isThresholdValid = thresholds.strong_match > thresholds.partial_match &&
+    thresholds.partial_match >= 0 && thresholds.strong_match <= 100;
+
   // Per-job overrides state
   const [jobEntries, setJobEntries] = useState<JobOverrideEntry[]>([]);
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
@@ -160,6 +174,10 @@ export default function ScoringConfigPage() {
         if (configData.weights) {
           setWeights(configData.weights);
           setSaved(configData.weights);
+        }
+        if (configData.thresholds) {
+          setThresholds(configData.thresholds);
+          setSavedThresholds(configData.thresholds);
         }
         if (jobData.jobs) {
           setJobEntries(jobData.jobs);
@@ -256,6 +274,33 @@ export default function ScoringConfigPage() {
       setSaving(false);
     }
   };
+
+  // ── Threshold save handler ──────────────────────────────────────
+
+  async function handleSaveThresholds() {
+    if (!isThresholdValid || thresholdSaving) return;
+    setThresholdSaving(true);
+    setThresholdStatus("idle");
+    try {
+      const res = await fetch("/api/reference/scoring-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, thresholds }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSavedThresholds(data.thresholds ?? thresholds);
+        setThresholdStatus("success");
+        setTimeout(() => setThresholdStatus("idle"), 3000);
+      } else {
+        setThresholdStatus("error");
+      }
+    } catch {
+      setThresholdStatus("error");
+    } finally {
+      setThresholdSaving(false);
+    }
+  }
 
   // ── Bulk re-score handler ───────────────────────────────────────
 
@@ -570,8 +615,168 @@ export default function ScoringConfigPage() {
             <p className="text-xs text-muted-foreground leading-relaxed">
               These weights apply to <strong>new referral submissions</strong>. Existing match
               records retain the scores they were computed with. To re-score existing candidates,
-              re-submit them or contact an administrator.
+              use the bulk re-score tool below.
             </p>
+          </div>
+
+          {/* ── Threshold editor ─────────────────────────────────── */}
+          <div className="bg-brand-charcoal rounded-xl border border-white/10 shadow-sm p-6 space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-brand-yellow" />
+                <h3 className="font-semibold text-sm text-white">Classification Thresholds</h3>
+              </div>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                Score Zones
+              </span>
+            </div>
+
+            {!isThresholdValid && (
+              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                Strong Match must be greater than Partial Match.
+              </div>
+            )}
+
+            {/* Unified zone bar */}
+            <div className="space-y-2">
+              <div className="flex h-5 rounded-lg overflow-hidden gap-0.5">
+                <div
+                  className="bg-white/10 transition-all duration-200 rounded-l-lg"
+                  style={{ width: `${thresholds.partial_match}%` }}
+                  title={`No Match: 0–${thresholds.partial_match - 1}`}
+                />
+                <div
+                  className="bg-brand-gold/80 transition-all duration-200"
+                  style={{ width: `${Math.max(0, thresholds.strong_match - thresholds.partial_match)}%` }}
+                  title={`Partial Match: ${thresholds.partial_match}–${thresholds.strong_match - 1}`}
+                />
+                <div
+                  className="bg-brand-lime flex-1 transition-all duration-200 rounded-r-lg"
+                  title={`Strong Match: ${thresholds.strong_match}–100`}
+                />
+              </div>
+              {/* Zone tick labels */}
+              <div className="relative h-4">
+                <span className="absolute left-0 text-[10px] text-white/40">0</span>
+                <span
+                  className="absolute text-[10px] text-brand-gold font-medium -translate-x-1/2"
+                  style={{ left: `${thresholds.partial_match}%` }}
+                >
+                  {thresholds.partial_match}
+                </span>
+                <span
+                  className="absolute text-[10px] text-brand-lime font-medium -translate-x-1/2"
+                  style={{ left: `${thresholds.strong_match}%` }}
+                >
+                  {thresholds.strong_match}
+                </span>
+                <span className="absolute right-0 text-[10px] text-white/40">100</span>
+              </div>
+              {/* Legend */}
+              <div className="flex gap-4 flex-wrap">
+                <span className="flex items-center gap-1.5 text-xs text-white/40">
+                  <span className="w-2 h-2 rounded-sm bg-white/10 inline-block" />
+                  No Match: 0–{thresholds.partial_match - 1}
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-brand-gold">
+                  <span className="w-2 h-2 rounded-sm bg-brand-gold/80 inline-block" />
+                  Partial Match: {thresholds.partial_match}–{thresholds.strong_match - 1}
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-brand-lime">
+                  <span className="w-2 h-2 rounded-sm bg-brand-lime inline-block" />
+                  Strong Match: {thresholds.strong_match}–100
+                </span>
+              </div>
+            </div>
+
+            {/* Stepper controls */}
+            <div className="grid grid-cols-2 gap-4 pt-1">
+              {/* Strong Match stepper */}
+              <div className="bg-white/5 rounded-lg p-4 space-y-3 border border-white/10">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-brand-lime inline-block" />
+                  <span className="text-xs font-semibold text-brand-lime uppercase tracking-wider">Strong Match</span>
+                </div>
+                <p className="text-[11px] text-white/40 leading-snug">Score at or above this value</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setThresholds((p) => ({ ...p, strong_match: Math.max(p.partial_match + 1, p.strong_match - 1) }))}
+                    disabled={thresholds.strong_match <= thresholds.partial_match + 1}
+                    className="w-8 h-8 rounded-md bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base font-bold transition-colors"
+                  >−</button>
+                  <input
+                    type="number" min={thresholds.partial_match + 1} max={100}
+                    value={thresholds.strong_match}
+                    onChange={(e) => setThresholds((p) => ({ ...p, strong_match: Math.max(p.partial_match + 1, Math.min(100, Number(e.target.value) || 0)) }))}
+                    className="flex-1 text-center text-lg font-mono font-bold text-white bg-transparent border border-white/20 rounded-md py-1 focus:outline-none focus:border-brand-lime focus:ring-0"
+                  />
+                  <button
+                    onClick={() => setThresholds((p) => ({ ...p, strong_match: Math.min(100, p.strong_match + 1) }))}
+                    disabled={thresholds.strong_match >= 100}
+                    className="w-8 h-8 rounded-md bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base font-bold transition-colors"
+                  >+</button>
+                </div>
+              </div>
+
+              {/* Partial Match stepper */}
+              <div className="bg-white/5 rounded-lg p-4 space-y-3 border border-white/10">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-brand-gold inline-block" />
+                  <span className="text-xs font-semibold text-brand-gold uppercase tracking-wider">Partial Match</span>
+                </div>
+                <p className="text-[11px] text-white/40 leading-snug">Score at or above this value</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setThresholds((p) => ({ ...p, partial_match: Math.max(0, p.partial_match - 1) }))}
+                    disabled={thresholds.partial_match <= 0}
+                    className="w-8 h-8 rounded-md bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base font-bold transition-colors"
+                  >−</button>
+                  <input
+                    type="number" min={0} max={thresholds.strong_match - 1}
+                    value={thresholds.partial_match}
+                    onChange={(e) => setThresholds((p) => ({ ...p, partial_match: Math.max(0, Math.min(p.strong_match - 1, Number(e.target.value) || 0)) }))}
+                    className="flex-1 text-center text-lg font-mono font-bold text-white bg-transparent border border-white/20 rounded-md py-1 focus:outline-none focus:border-brand-gold focus:ring-0"
+                  />
+                  <button
+                    onClick={() => setThresholds((p) => ({ ...p, partial_match: Math.min(p.strong_match - 1, p.partial_match + 1) }))}
+                    disabled={thresholds.partial_match >= thresholds.strong_match - 1}
+                    className="w-8 h-8 rounded-md bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base font-bold transition-colors"
+                  >+</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2 border-t border-white/10">
+              <button
+                onClick={handleSaveThresholds}
+                disabled={!isThresholdValid || thresholdSaving || !isThresholdDirty}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-yellow text-brand-charcoal text-sm font-semibold hover:bg-brand-yellow/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {thresholdSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {thresholdSaving ? "Saving…" : "Save Thresholds"}
+              </button>
+              <button
+                onClick={() => setThresholds(DEFAULT_THRESHOLDS)}
+                disabled={thresholdSaving}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/20 text-sm text-white/60 hover:bg-white/5 transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset
+              </button>
+              {thresholdStatus === "success" && (
+                <span className="flex items-center gap-1 text-xs text-brand-lime">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Saved
+                </span>
+              )}
+              {thresholdStatus === "error" && (
+                <span className="flex items-center gap-1 text-xs text-red-400">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Save failed
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -590,7 +795,7 @@ export default function ScoringConfigPage() {
               {PREVIEW_RECORDS.map((m) => {
                 const oldScore = m.match_score;
                 const newScore = computeScore(m, weights);
-                const newClass = classifyScore(newScore);
+                const newClass = classifyScore(newScore, thresholds);
                 const delta = newScore - oldScore;
 
                 return (

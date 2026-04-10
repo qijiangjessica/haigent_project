@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Plus, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,9 @@ export function HeroBanner({
   badgeText = "AI-Powered",
   quickActions,
 }: HeroBannerProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   return (
     <div className={`${bgColor} rounded-xl p-6 sm:p-8`}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -47,7 +51,7 @@ export function HeroBanner({
           </div>
           <p className="text-white/80 text-sm sm:text-base">{subtitle}</p>
         </div>
-        {quickActions && quickActions.length > 0 && (
+        {mounted && quickActions && quickActions.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button className={`${badgeColor === "bg-brand-pink" ? "bg-brand-teal" : "bg-brand-pink"} text-brand-charcoal font-semibold hover:opacity-90`}>

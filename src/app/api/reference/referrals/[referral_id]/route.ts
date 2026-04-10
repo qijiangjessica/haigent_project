@@ -6,6 +6,7 @@ import {
   getEffectiveWeights,
   getLivePoolEntry,
   type LiveMatchRecord,
+  classify,
 } from "@/lib/reference-store";
 import {
   updateReferralAndPersist, addMatchesAndPersist,
@@ -64,7 +65,7 @@ function computeStaticMatchScores(
         location_score * weights.location + seniority_score * weights.seniority) / 100
     );
     const classification: LiveMatchRecord["classification"] =
-      match_score >= 70 ? "Strong Match" : match_score >= 50 ? "Partial Match" : "No Match";
+      classify(match_score);
 
     return {
       match_id: `EDIT-${referralId}-R${runIndex}-${i}`,
@@ -133,7 +134,7 @@ Respond ONLY with a valid JSON array, no other text:
         s.location_score * weights.location + s.seniority_score * weights.seniority) / 100
     );
     const classification: LiveMatchRecord["classification"] =
-      match_score >= 70 ? "Strong Match" : match_score >= 50 ? "Partial Match" : "No Match";
+      classify(match_score);
     return {
       match_id: `EDIT-AI-${referralId}-R${runIndex}-${i}`,
       referral_id: referralId, candidate_name: candidate.name,

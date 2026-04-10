@@ -8,6 +8,7 @@ import { AI_MODULES } from "@/lib/modules";
 
 interface HeaderProps {
   onMenuClick: () => void;
+  collapsed?: boolean;
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
@@ -22,28 +23,28 @@ export function Header({ onMenuClick }: HeaderProps) {
     : "Haigent Dashboard";
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-background border-b flex items-center px-4 sm:px-6">
+    <header className="sticky top-0 z-30 h-16 bg-background border-b flex items-center px-4 sm:px-6 w-full">
       {/* Mobile menu button */}
       <Button
         variant="ghost"
         size="icon"
-        className="lg:hidden mr-2"
+        className="lg:hidden mr-2 flex-shrink-0"
         onClick={onMenuClick}
       >
         <Menu className="h-5 w-5" />
       </Button>
 
       {/* Page title */}
-      <h1 className="text-xl font-semibold flex-1">{pageTitle}</h1>
+      <h1 className="text-xl font-semibold flex-1 truncate">{pageTitle}</h1>
 
       {/* Right side */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-shrink-0">
         {/* Search */}
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search..."
-            className="w-64 pl-9 bg-muted/50 border-0 focus-visible:ring-brand-teal/20 focus-visible:border-brand-teal"
+            className="w-48 lg:w-64 pl-9 bg-muted/50 border-0 focus-visible:ring-brand-teal/20 focus-visible:border-brand-teal"
           />
         </div>
 
