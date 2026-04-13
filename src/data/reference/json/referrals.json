@@ -9,7 +9,7 @@
     "candidate_email": "alex.jane@gmail.com",
     "candidate_phone": "5099096666",
     "current_employer": "TD",
-    "years_experience": 7,
+    "years_experience": 9,
     "location": "Vancouver",
     "availability": "2 weeks",
     "linkedin_url": "",
@@ -22,9 +22,17 @@
     "extra_filenames": [],
     "is_duplicate": false,
     "duplicate_candidate_id": null,
-    "skills_claimed": [],
-    "pipeline_status": "in_pool",
-    "in_review_at": "2026-04-13T13:26:57.350Z",
+    "skills_claimed": [
+      "Python",
+      "Sql",
+      "Docker",
+      "Azure",
+      "Devops",
+      "Docker",
+      "GenAi"
+    ],
+    "pipeline_status": "in_scheduling",
+    "in_review_at": "2026-04-13T17:38:48.468Z",
     "hired_at": null
   }
 ]

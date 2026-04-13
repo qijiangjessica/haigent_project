@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -18,6 +18,20 @@ interface SidebarProps {
 export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showTopFade, setShowTopFade] = useState(false);
+  const [showBottomFade, setShowBottomFade] = useState(false);
+
+  const updateFades = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setShowTopFade(el.scrollTop > 8);
+    setShowBottomFade(el.scrollTop + el.clientHeight < el.scrollHeight - 8);
+  }, []);
+
+  useEffect(() => {
+    updateFades();
+  }, [referenceOpen, updateFades]);
 
   useEffect(() => {
     if (pathname.startsWith("/reference")) {
@@ -86,8 +100,21 @@ export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarP
           </Link>
         </div>
 
-        {/* Scrollable nav area */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        {/* Scrollable nav area with hidden scrollbar + fade hints */}
+        <div className="flex-1 relative min-h-0">
+          {/* Top fade — appears when scrolled down */}
+          {showTopFade && (
+            <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-brand-charcoal to-transparent z-10 pointer-events-none" />
+          )}
+          {/* Bottom fade — appears when more content below */}
+          {showBottomFade && (
+            <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-brand-charcoal to-transparent z-10 pointer-events-none" />
+          )}
+        <div
+          ref={scrollRef}
+          onScroll={updateFades}
+          className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {/* Primary Nav — AI Agents */}
           <div className={cn("pt-5", collapsed ? "px-2" : "px-3")}>
             {!collapsed && (
@@ -255,6 +282,7 @@ export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarP
               </nav>
             </div>
           )}
+        </div>
         </div>
 
         {/* Footer — pinned to bottom */}

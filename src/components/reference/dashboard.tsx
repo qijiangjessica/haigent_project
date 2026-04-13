@@ -27,6 +27,32 @@ interface LiveMatchRecord {
   match_score: number;
   classification: "Strong Match" | "Partial Match" | "No Match";
   posting_id: string;
+  skill_overlap_score: number;
+  experience_score: number;
+  location_score: number;
+  seniority_score: number;
+}
+
+const DEFAULT_WEIGHTS = { skill: 50, experience: 25, location: 15, seniority: 10 };
+const DEFAULT_THRESHOLDS = { strong_match: 70, partial_match: 50 };
+
+function computeScore(
+  m: { skill_overlap_score: number; experience_score: number; location_score: number; seniority_score: number },
+  w: typeof DEFAULT_WEIGHTS
+): number {
+  return Math.round(
+    (m.skill_overlap_score * w.skill +
+      m.experience_score * w.experience +
+      m.location_score * w.location +
+      m.seniority_score * w.seniority) / 100
+  );
+}
+
+function classifyScore(
+  score: number,
+  t: typeof DEFAULT_THRESHOLDS = DEFAULT_THRESHOLDS
+): "Strong Match" | "Partial Match" | "No Match" {
+  return score >= t.strong_match ? "Strong Match" : score >= t.partial_match ? "Partial Match" : "No Match";
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -61,6 +87,8 @@ export function ReferenceDashboard() {
   const [rejectedReferralIds, setRejectedReferralIds] = useState<Set<string>>(new Set());
   const [seededExpanded, setSeededExpanded] = useState(false);
   const [liveExpanded, setLiveExpanded] = useState(false);
+  const [weights, setWeights] = useState(DEFAULT_WEIGHTS);
+  const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS);
 
   const PAGE_SIZE = 5;
 
@@ -88,20 +116,32 @@ export function ReferenceDashboard() {
       .then((r) => r.json())
       .then((data) => setRejectedReferralIds(new Set(data.rejected_ids ?? [])))
       .catch(() => {});
+
+    fetch("/api/reference/scoring-config")
+      .then((r) => r.json())
+      .then((data: { weights?: typeof DEFAULT_WEIGHTS; thresholds?: typeof DEFAULT_THRESHOLDS }) => {
+        if (data.weights) setWeights(data.weights);
+        if (data.thresholds) setThresholds(data.thresholds);
+      })
+      .catch(() => {});
   }, []);
 
   const stats = useMemo(() => {
-    const seededStrong = MATCH_RECORDS.filter((m) => m.classification === "Strong Match").length;
-    // Count unique referrals that have at least one strong match (not total records)
-    const liveStrongCount = new Set(
+    // Seeded: unique candidates with at least one strong match under current weights + thresholds
+    const seededStrongIds = new Set(
+      MATCH_RECORDS
+        .filter((m) => classifyScore(computeScore(m, weights), thresholds) === "Strong Match")
+        .map((m) => m.candidate_id)
+    );
+    // Live: unique referrals with at least one strong match under current thresholds
+    const liveStrongIds = new Set(
       liveMatches
-        .filter((m) => m.classification === "Strong Match")
+        .filter((m) => classifyScore(m.match_score, thresholds) === "Strong Match")
         .map((m) => m.referral_id)
-    ).size;
+    );
     const seededVerifying = REFERENCE_CANDIDATES.filter(
       (c) => c.pool_status === "verification_in_progress"
     ).length;
-    // Live referrals with no match records = scoring failed, need attention
     const scoredReferralIds = new Set(liveMatches.map((m) => m.referral_id));
     const liveUnscored = liveReferrals.filter(
       (r) => !scoredReferralIds.has(r.referral_id) &&
@@ -110,11 +150,11 @@ export function ReferenceDashboard() {
     ).length;
     return {
       total: REFERENCES.length + liveReferrals.length,
-      strongMatches: seededStrong + liveStrongCount,
+      strongMatches: seededStrongIds.size + liveStrongIds.size,
       inPool: TALENT_POOL.length + livePoolCount,
       verifying: seededVerifying + liveUnscored,
     };
-  }, [liveReferrals, liveMatches, livePoolCount, rejectedReferralIds, poolReferralIds]);
+  }, [liveReferrals, liveMatches, livePoolCount, rejectedReferralIds, poolReferralIds, weights, thresholds]);
 
   return (
     <div className="space-y-6">
@@ -182,9 +222,13 @@ export function ReferenceDashboard() {
             const ref = REFERENCES.find(
               (r) => r.reference_id === candidate.reference_id
             );
-            const bestMatch = MATCH_RECORDS.filter(
+            const candidateRecords = MATCH_RECORDS.filter(
               (m) => m.candidate_id === candidate.candidate_id
-            ).sort((a, b) => b.match_score - a.match_score)[0];
+            );
+            const bestMatch = candidateRecords
+              .sort((a, b) => computeScore(b, weights) - computeScore(a, weights))[0];
+            const bestScore = bestMatch ? computeScore(bestMatch, weights) : candidate.candidate_score;
+            const bestClass = bestMatch ? classifyScore(bestScore, thresholds) : null;
 
             return (
               <div key={candidate.candidate_id} className="px-5 py-4">
@@ -217,21 +261,21 @@ export function ReferenceDashboard() {
 
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                     <span className="text-sm font-bold text-foreground">
-                      {candidate.candidate_score}
+                      {bestScore}
                       <span className="text-xs font-normal text-muted-foreground">/100</span>
                     </span>
-                    {bestMatch && (
+                    {bestMatch && bestClass && (
                       <div className="flex flex-col items-end gap-0.5">
                         <span
                           className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            bestMatch.classification === "Strong Match"
+                            bestClass === "Strong Match"
                               ? "bg-brand-green/10 text-brand-green"
-                              : bestMatch.classification === "Partial Match"
+                              : bestClass === "Partial Match"
                                 ? "bg-brand-gold/10 text-brand-gold"
                                 : "bg-muted text-muted-foreground"
                           }`}
                         >
-                          {bestMatch.classification}
+                          {bestClass}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {REFERENCE_JOBS.find((j) => j.id === bestMatch.posting_id)?.title ?? bestMatch.posting_id}
@@ -296,6 +340,7 @@ export function ReferenceDashboard() {
                     (best, m) => (!best || m.match_score > best.match_score ? m : best),
                     null
                   );
+                  const bestMatchClass = bestMatch ? classifyScore(bestMatch.match_score, thresholds) : null;
                   const isRejected = rejectedReferralIds.has(referral.referral_id);
                   const isInPool = poolReferralIds.has(referral.referral_id);
                   const scoringFailed = refMatches.length === 0 && !isRejected && !isInPool;
@@ -343,14 +388,14 @@ export function ReferenceDashboard() {
                               </span>
                               <span
                                 className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                  bestMatch.classification === "Strong Match"
+                                  bestMatchClass === "Strong Match"
                                     ? "bg-brand-green/10 text-brand-green"
-                                    : bestMatch.classification === "Partial Match"
+                                    : bestMatchClass === "Partial Match"
                                       ? "bg-brand-gold/10 text-brand-gold"
                                       : "bg-muted text-muted-foreground"
                                 }`}
                               >
-                                {bestMatch.classification}
+                                {bestMatchClass}
                               </span>
                               <span className="text-xs text-muted-foreground">
                                 {REFERENCE_JOBS.find((j) => j.id === bestMatch.posting_id)?.title ?? bestMatch.posting_id}

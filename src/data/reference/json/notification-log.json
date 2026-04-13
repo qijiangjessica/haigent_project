@@ -64,5 +64,16 @@
     "subject": "Update on your referral — Alex Nue: Moving Forward",
     "status": "dev_logged",
     "error_message": null
+  },
+  {
+    "log_id": "LOG-1776103674443-6YCV",
+    "sent_at": "2026-04-13T18:07:54.443Z",
+    "notification_type": "status_change_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260413-X8AN",
+    "subject": "Update on your referral — Alex Nue: Moving Forward",
+    "status": "dev_logged",
+    "error_message": null
   }
 ]

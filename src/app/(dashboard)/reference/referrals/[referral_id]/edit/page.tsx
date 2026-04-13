@@ -91,7 +91,9 @@ export default function ReferralEditPage() {
   const [linkedin, setLinkedin] = useState("");
   const [targetJobId, setTargetJobId] = useState("pool");
   const [referrerNote, setReferrerNote] = useState("");
-  const [skills, setSkills] = useState(""); // comma-separated string for the input
+  const [skillTags, setSkillTags] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState("");
+  const skillInputRef = useRef<HTMLInputElement>(null);
 
   // Resume re-upload state
   const resumeRef = useRef<HTMLInputElement>(null);
@@ -130,7 +132,7 @@ export default function ReferralEditPage() {
         setLinkedin(r.linkedin_url ?? "");
         setTargetJobId(r.target_job_id ?? "pool");
         setReferrerNote(r.referrer_note ?? "");
-        setSkills((r.skills_claimed ?? []).join(", "));
+        setSkillTags(r.skills_claimed ?? []);
         setLoading(false);
       })
       .catch(() => { setNotFound(true); setLoading(false); });
@@ -169,7 +171,9 @@ export default function ReferralEditPage() {
     setSaving(true);
     setSaveError(null);
 
-    const skillList = skills.split(",").map((s) => s.trim()).filter(Boolean);
+    // Flush any text still in the input that hasn't been committed as a tag yet
+    const pending = skillInput.trim();
+    const skillList = pending ? [...skillTags, pending] : skillTags;
 
     try {
       const res = await fetch(`/api/reference/referrals/${referral_id}`, {
@@ -563,22 +567,57 @@ export default function ReferralEditPage() {
                 <span className="ml-1 font-normal">(comma-separated)</span>
                 <span className="ml-1 text-brand-teal text-[10px]">↻ triggers re-score</span>
               </label>
-              <input
-                type="text"
-                value={skills}
-                onChange={(e) => setSkills(e.target.value)}
-                placeholder="e.g. Python, SQL, Leadership, Machine Learning"
-                className="w-full bg-muted rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
-              />
-              {skills && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {skills.split(",").map((s) => s.trim()).filter(Boolean).map((skill) => (
-                    <span key={skill} className="text-xs px-2.5 py-1 rounded-md bg-brand-teal/10 text-brand-teal font-medium">
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {/* Tag-input: comma or Enter locks the current word into a chip */}
+              <div
+                className="min-h-[42px] w-full bg-muted rounded-lg px-3 py-2 flex flex-wrap gap-1.5 items-center cursor-text focus-within:ring-2 focus-within:ring-brand-teal/30"
+                onClick={() => skillInputRef.current?.focus()}
+              >
+                {skillTags.map((tag, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-brand-teal/10 text-brand-teal font-medium"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSkillTags((prev) => prev.filter((_, idx) => idx !== i));
+                      }}
+                      className="hover:text-brand-teal/50 transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  ref={skillInputRef}
+                  type="text"
+                  value={skillInput}
+                  onChange={(e) => setSkillInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "," || e.key === "Enter") {
+                      e.preventDefault();
+                      const val = skillInput.trim();
+                      if (val) {
+                        setSkillTags((prev) => [...prev, val]);
+                        setSkillInput("");
+                      }
+                    } else if (e.key === "Backspace" && skillInput === "") {
+                      setSkillTags((prev) => prev.slice(0, -1));
+                    }
+                  }}
+                  onBlur={() => {
+                    const val = skillInput.trim();
+                    if (val) {
+                      setSkillTags((prev) => [...prev, val]);
+                      setSkillInput("");
+                    }
+                  }}
+                  placeholder={skillTags.length === 0 ? "e.g. Python, SQL, Leadership…" : "Add a skill…"}
+                  className="flex-1 min-w-[140px] bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+              </div>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground block mb-1.5">
