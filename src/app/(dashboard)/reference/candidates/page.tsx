@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
 import { MATCH_RECORDS } from "@/data/reference/matches";
-import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle, Square, CheckSquare, Minus, Users, Filter, UserPlus } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle, Square, CheckSquare, Minus, Users, Filter, UserPlus, CalendarClock } from "lucide-react";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { AUDIT_LOG } from "@/data/reference/audit-log";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
@@ -28,7 +28,7 @@ interface SubmittedReferral {
   resume_filename: string | null;
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
-  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "hired";
+  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "in_scheduling" | "hired";
   in_review_at: string | null;
   skills_claimed: string[];
 }
@@ -153,6 +153,7 @@ export default function CandidatesPage() {
   const [promoteRecruiterEmail, setPromoteRecruiterEmail] = useState("");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [inReviewSet, setInReviewSet] = useState<Set<string>>(new Set());
+  const [inSchedulingSet, setInSchedulingSet] = useState<Set<string>>(new Set());
   const [movingToPipelineId, setMovingToPipelineId] = useState<string | null>(null);
   const [referralMatchedSet, setReferralMatchedSet] = useState<Set<string>>(new Set());
   const [applyingDecisionId, setApplyingDecisionId] = useState<string | null>(null);
@@ -189,7 +190,7 @@ export default function CandidatesPage() {
   async function persistReferralDecision(referralId: string, decision: DecisionValue, reasonCode: string) {
     if (!decision) return;
     const afterPipelineStatus =
-      decision === "PROCEED" ? "in_pool"
+      decision === "PROCEED" ? "in_scheduling"
         : decision === "NOT_SUITABLE" ? "not_suitable"
           : null;
 
@@ -210,40 +211,14 @@ export default function CandidatesPage() {
           body: JSON.stringify({ pipeline_status: afterPipelineStatus }),
         });
         if (decision === "PROCEED") {
-          // Remove from Active Pipeline
+          // Remove from Active Pipeline, move to Scheduling
           setInReviewSet((prev) => { const n = new Set(prev); n.delete(referralId); return n; });
+          setInSchedulingSet((prev) => new Set([...prev, referralId]));
 
-          // Update local referral record so it doesn't drift back into Pending Review
+          // Update local referral record to reflect new stage
           setSubmittedReferrals((prev) =>
-            prev.map((r) => r.referral_id === referralId ? { ...r, pipeline_status: "in_pool" as const } : r)
+            prev.map((r) => r.referral_id === referralId ? { ...r, pipeline_status: "in_scheduling" as const } : r)
           );
-
-          // Auto-create a LivePoolEntry so the candidate is visible on the Talent Pool page
-          const referral = submittedReferrals.find((r) => r.referral_id === referralId);
-          if (referral) {
-            const yoe = referral.years_experience ?? 0;
-            const expLevel = yoe >= 10 ? "Lead" : yoe >= 6 ? "Senior" : yoe >= 3 ? "Mid" : "Junior";
-            const poolRes = await fetch("/api/reference/promote-to-pool", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                referral_id: referralId,
-                experience_level: expLevel,
-                skill_tags: referral.skills_claimed ?? [],
-                location_tags: referral.location ? [referral.location] : [],
-                preferred_role_tags: [],
-              }),
-            }).catch(() => null);
-            if (poolRes?.ok) {
-              const poolData = await poolRes.json().catch(() => null);
-              if (poolData?.pool_id) {
-                setPromotedMap((prev) => ({ ...prev, [referralId]: poolData.pool_id }));
-              }
-            } else {
-              // Already in pool (409) — still mark promoted so it doesn't show in pending
-              setPromotedMap((prev) => ({ ...prev, [referralId]: "pool" }));
-            }
-          }
         } else if (decision === "NOT_SUITABLE") {
           setInReviewSet((prev) => { const n = new Set(prev); n.delete(referralId); return n; });
           setRejectedSet((prev) => new Set([...prev, referralId]));
@@ -366,6 +341,13 @@ export default function CandidatesPage() {
             .map((r) => r.referral_id)
         );
         setInReviewSet(inReview);
+        // Restore in-scheduling state from persisted pipeline_status
+        const inScheduling = new Set(
+          referrals
+            .filter((r) => r.pipeline_status === "in_scheduling")
+            .map((r) => r.referral_id)
+        );
+        setInSchedulingSet(inScheduling);
       })
       .catch(() => {});
 
@@ -566,17 +548,27 @@ export default function CandidatesPage() {
     [submittedReferrals, inReviewSet]
   );
 
+  const schedulingReferrals = useMemo(
+    () =>
+      submittedReferrals.filter(
+        (r) => inSchedulingSet.has(r.referral_id) || r.pipeline_status === "in_scheduling"
+      ),
+    [submittedReferrals, inSchedulingSet]
+  );
+
   const pendingReferrals = useMemo(
     () =>
       submittedReferrals.filter(
         (r) =>
           !inReviewSet.has(r.referral_id) &&
+          !inSchedulingSet.has(r.referral_id) &&
           !rejectedSet.has(r.referral_id) &&
           !promotedMap[r.referral_id] &&
           r.pipeline_status !== "in_pool" &&
+          r.pipeline_status !== "in_scheduling" &&
           r.pipeline_status !== "hired"
       ),
-    [submittedReferrals, inReviewSet, rejectedSet, promotedMap]
+    [submittedReferrals, inReviewSet, inSchedulingSet, rejectedSet, promotedMap]
   );
 
   // Referral-specific status filters hide the seeded candidate section
@@ -738,7 +730,7 @@ export default function CandidatesPage() {
 
       {/* ── Pipeline stats bar ── */}
       {submittedReferrals.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 -mt-2">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 -mt-2">
           <div className="bg-white rounded-xl border border-border shadow-sm px-4 py-3 flex flex-col gap-0.5">
             <span className="text-2xl font-bold text-foreground">{filtered.length + inReviewReferrals.length}</span>
             <span className="text-xs text-muted-foreground">Total in Pipeline</span>
@@ -750,6 +742,10 @@ export default function CandidatesPage() {
           <div className="bg-white rounded-xl border border-brand-cyan/20 shadow-sm px-4 py-3 flex flex-col gap-0.5">
             <span className="text-2xl font-bold text-brand-cyan">{pendingReferrals.length}</span>
             <span className="text-xs text-muted-foreground">Pending Review</span>
+          </div>
+          <div className="bg-white rounded-xl border border-brand-teal/20 shadow-sm px-4 py-3 flex flex-col gap-0.5">
+            <span className="text-2xl font-bold text-brand-teal">{schedulingReferrals.length}</span>
+            <span className="text-xs text-muted-foreground">In Scheduling</span>
           </div>
           <div className="bg-white rounded-xl border border-brand-gold/20 shadow-sm px-4 py-3 flex flex-col gap-0.5">
             <span className="text-2xl font-bold text-brand-gold">{pipelineStats.hired}</span>
@@ -1554,7 +1550,7 @@ export default function CandidatesPage() {
                     )}
                     {dec.decision === "PROCEED" && (
                       <p className="mt-2 text-xs text-brand-teal">
-                        ✓ Moved to Talent Pool — candidate promoted to &ldquo;in_pool&rdquo;.
+                        ✓ Moved to Interview Scheduling — candidate forwarded to the scheduling queue.
                       </p>
                     )}
                     {dec.decision === "ON_HOLD" && (
@@ -1584,6 +1580,116 @@ export default function CandidatesPage() {
                     >
                       View referral record →
                     </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── In Interview Scheduling ── */}
+      {schedulingReferrals.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarClock className="h-4 w-4 text-brand-teal" />
+            <h2 className="text-sm font-semibold text-foreground">Interview Scheduling</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-brand-teal/10 text-brand-teal font-medium">
+              {schedulingReferrals.length}
+            </span>
+            <span className="text-xs text-muted-foreground">· Approved and forwarded to scheduling</span>
+          </div>
+
+          <div className="grid gap-4">
+            {schedulingReferrals.map((referral) => {
+              const matches = liveMatches.filter((m) => m.referral_id === referral.referral_id);
+              const latestByJob = matches.reduce<Record<string, LiveMatchRecord>>((acc, m) => {
+                const existing = acc[m.posting_id];
+                if (!existing || m.evaluated_date >= existing.evaluated_date) acc[m.posting_id] = m;
+                return acc;
+              }, {});
+              const sortedMatches = Object.values(latestByJob).sort((a, b) => b.match_score - a.match_score);
+              const bestMatch = sortedMatches[0] ?? null;
+
+              return (
+                <div key={referral.referral_id} className="bg-white rounded-xl border border-brand-teal/30 shadow-sm p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link
+                          href={`/reference/referrals/${referral.referral_id}`}
+                          className="font-semibold text-foreground hover:text-brand-teal hover:underline"
+                        >
+                          {referral.candidate_name}
+                        </Link>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-brand-teal/10 text-brand-teal font-medium flex items-center gap-1">
+                          <CalendarClock className="h-3 w-3" />
+                          In Scheduling
+                        </span>
+                        {referral.availability && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-brand-cyan/10 text-brand-cyan font-medium">
+                            {referral.availability}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        {referral.current_employer} · {referral.years_experience}y exp · {referral.location}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {referral.candidate_email}{referral.candidate_phone ? ` · ${referral.candidate_phone}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Referred by {referral.referrer_name} · {new Date(referral.submitted_at).toLocaleDateString("en-CA")}
+                      </p>
+                    </div>
+                    {bestMatch && (
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <div className="text-right">
+                          <span className="text-2xl font-bold text-foreground">{bestMatch.match_score}</span>
+                          <span className="text-sm text-muted-foreground">/100</span>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          bestMatch.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                            : bestMatch.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                              : "bg-muted text-muted-foreground"
+                        }`}>
+                          {bestMatch.classification}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {referral.skills_claimed?.length > 0 && (
+                    <div className="mt-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {referral.skills_claimed.map((skill) => (
+                          <span key={skill} className="text-xs px-2.5 py-1 rounded-md font-medium bg-muted text-muted-foreground">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3 pt-3 border-t border-border flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5 text-xs text-brand-teal">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Recruiter approved · forwarded to interview scheduling</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href="/schedule/candidates"
+                        className="text-xs text-brand-teal font-medium hover:underline"
+                      >
+                        View in Scheduling →
+                      </Link>
+                      <Link
+                        href={`/reference/referrals/${referral.referral_id}`}
+                        className="text-xs text-muted-foreground hover:underline"
+                      >
+                        Referral record →
+                      </Link>
+                    </div>
                   </div>
                 </div>
               );

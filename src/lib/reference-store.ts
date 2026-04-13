@@ -115,7 +115,7 @@ export interface SubmittedReferral {
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
   skills_claimed: string[];
-  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "hired";
+  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "in_scheduling" | "hired";
   in_review_at: string | null;   // ISO timestamp when recruiter moved to active pipeline
   hired_at: string | null;       // ISO timestamp when marked hired
 }

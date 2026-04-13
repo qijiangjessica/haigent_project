@@ -1,1 +1,68 @@
-[]
+[
+  {
+    "log_id": "LOG-1776086740405-HNNB",
+    "sent_at": "2026-04-13T13:25:40.405Z",
+    "notification_type": "submission_confirmation_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260413-X8AN",
+    "subject": "Your referral for Alex Nue has been received",
+    "status": "dev_logged",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1776086740411-NA1C",
+    "sent_at": "2026-04-13T13:25:40.411Z",
+    "notification_type": "match_result_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260413-X8AN",
+    "subject": "Match found for your referral — Alex Nue scored 42/100",
+    "status": "dev_logged",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1776086740420-L5IG",
+    "sent_at": "2026-04-13T13:25:40.420Z",
+    "notification_type": "candidate_referred",
+    "to_email": "alex.jane@gmail.com",
+    "to_role": "candidate",
+    "referral_id": "REF-20260413-X8AN",
+    "subject": "You've been referred for a Open Pool role at HaiGent",
+    "status": "dev_logged",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1776086799199-GT51",
+    "sent_at": "2026-04-13T13:26:39.199Z",
+    "notification_type": "promoted_to_pool_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260413-X8AN",
+    "subject": "Alex Nue has been added to the talent pool",
+    "status": "dev_logged",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1776086799208-6FGL",
+    "sent_at": "2026-04-13T13:26:39.208Z",
+    "notification_type": "candidate_promoted_to_pool",
+    "to_email": "alex.jane@gmail.com",
+    "to_role": "candidate",
+    "referral_id": "REF-20260413-X8AN",
+    "subject": "You've been added to our active talent pipeline",
+    "status": "dev_logged",
+    "error_message": null
+  },
+  {
+    "log_id": "LOG-1776086834618-C1T1",
+    "sent_at": "2026-04-13T13:27:14.618Z",
+    "notification_type": "status_change_referrer",
+    "to_email": "siva.nadella@procogia.com",
+    "to_role": "referrer",
+    "referral_id": "REF-20260413-X8AN",
+    "subject": "Update on your referral — Alex Nue: Moving Forward",
+    "status": "dev_logged",
+    "error_message": null
+  }
+]

@@ -1,1 +1,37 @@
-[]
+[
+  {
+    "pool_id": "LPOOL-GENOH",
+    "referral_id": "REF-20260413-X8AN",
+    "candidate_name": "Alex Nue",
+    "candidate_email": "alex.jane@gmail.com",
+    "years_experience": 7,
+    "location": "Vancouver",
+    "availability": "2 weeks",
+    "date_added": "2026-04-13",
+    "date_last_evaluated": "2026-04-13",
+    "status": "Active Hold",
+    "skill_tags": [],
+    "experience_level": "Senior",
+    "location_tags": [
+      "Vancouver"
+    ],
+    "preferred_role_tags": [
+      "Data Engineer",
+      "Data Analyst"
+    ],
+    "match_evaluation_history": [
+      {
+        "posting_id": "ROL-PeY7KEhPOZ",
+        "score": 41,
+        "evaluated_date": "2026-04-13"
+      },
+      {
+        "posting_id": "ROL-N_TspQJnOE",
+        "score": 42,
+        "evaluated_date": "2026-04-13"
+      }
+    ],
+    "promoted_at": "2026-04-13T13:26:39.166Z",
+    "promoted_by": "Recruiter"
+  }
+]

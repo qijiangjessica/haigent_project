@@ -48,7 +48,7 @@ interface SubmittedReferral {
   resume_filename: string | null;
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
-  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "hired";
+  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "in_scheduling" | "hired";
   skills_claimed: string[];
 }
 
@@ -660,7 +660,11 @@ export default function TalentPoolPage() {
             })}
 
             {/* Live pool entries (promoted from submitted referrals) */}
-            {livePoolEntries.map((entry) => {
+            {livePoolEntries.filter((entry) => {
+              const referral = submittedReferrals.find((r) => r.referral_id === entry.referral_id);
+              // Exclude referrals that have advanced beyond the pool stage
+              return !referral || (referral.pipeline_status === "in_pool" || referral.pipeline_status === "in_review");
+            }).map((entry) => {
               const entryScoreExpanded = expandedScores.has(`lpe-${entry.pool_id}`);
               const entryLiveMatches = liveMatches.filter((m) => m.referral_id === entry.referral_id);
               const bestLiveMatch = entryLiveMatches.length > 0

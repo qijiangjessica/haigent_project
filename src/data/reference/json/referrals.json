@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "referral_id": "REF-20260413-X8AN",
+    "submitted_at": "2026-04-13T13:25:40.339Z",
+    "referrer_name": "siva",
+    "referrer_emp_id": "39",
+    "referrer_email": "siva.nadella@procogia.com",
+    "candidate_name": "Alex Nue",
+    "candidate_email": "alex.jane@gmail.com",
+    "candidate_phone": "5099096666",
+    "current_employer": "TD",
+    "years_experience": 7,
+    "location": "Vancouver",
+    "availability": "2 weeks",
+    "linkedin_url": "",
+    "target_job_id": "pool",
+    "referrer_note": "Good fit for data engineering",
+    "resume_filename": null,
+    "resume_text": null,
+    "resume_format": null,
+    "resume_word_count": null,
+    "extra_filenames": [],
+    "is_duplicate": false,
+    "duplicate_candidate_id": null,
+    "skills_claimed": [],
+    "pipeline_status": "in_pool",
+    "in_review_at": "2026-04-13T13:26:57.350Z",
+    "hired_at": null
+  }
+]

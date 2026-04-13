@@ -1,1 +1,38 @@
-[]
+[
+  {
+    "event_id": "EVT-PROMO-1776086799171",
+    "timestamp": "2026-04-13T13:26:39.171Z",
+    "actor": "Recruiter",
+    "actor_id": "Recruiter",
+    "event_type": "PoolPromotion",
+    "entity_type": "referral",
+    "entity_id": "REF-20260413-X8AN",
+    "before_state": "pending_review",
+    "after_state": "in_pool",
+    "notes": "Promoted to pool as LPOOL-GENOH · Level: Senior"
+  },
+  {
+    "event_id": "EVT-PIPELINE-1776086819264",
+    "timestamp": "2026-04-13T13:26:59.264Z",
+    "actor": "Recruiter",
+    "actor_id": "Recruiter",
+    "event_type": "StatusChange",
+    "entity_type": "referral",
+    "entity_id": "REF-20260413-X8AN",
+    "before_state": "pending_review",
+    "after_state": "in_review",
+    "notes": "Pipeline status: pending_review → in_review"
+  },
+  {
+    "event_id": "EVT-PIPELINE-1776086834719",
+    "timestamp": "2026-04-13T13:27:14.719Z",
+    "actor": "Recruiter",
+    "actor_id": "Recruiter",
+    "event_type": "StatusChange",
+    "entity_type": "referral",
+    "entity_id": "REF-20260413-X8AN",
+    "before_state": "in_review",
+    "after_state": "in_pool",
+    "notes": "Pipeline status: in_review → in_pool"
+  }
+]

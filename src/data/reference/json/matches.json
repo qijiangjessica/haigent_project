@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "match_id": "STATIC-REF-20260413-X8AN-0",
+    "referral_id": "REF-20260413-X8AN",
+    "candidate_name": "Alex Nue",
+    "posting_id": "ROL-PeY7KEhPOZ",
+    "match_score": 41,
+    "skill_overlap_score": 0,
+    "experience_score": 90,
+    "location_score": 100,
+    "seniority_score": 80,
+    "classification": "No Match",
+    "evaluated_date": "2026-04-13",
+    "scoring_method": "static"
+  },
+  {
+    "match_id": "STATIC-REF-20260413-X8AN-1",
+    "referral_id": "REF-20260413-X8AN",
+    "candidate_name": "Alex Nue",
+    "posting_id": "ROL-N_TspQJnOE",
+    "match_score": 42,
+    "skill_overlap_score": 0,
+    "experience_score": 90,
+    "location_score": 100,
+    "seniority_score": 80,
+    "classification": "No Match",
+    "evaluated_date": "2026-04-13",
+    "scoring_method": "static"
+  }
+]
