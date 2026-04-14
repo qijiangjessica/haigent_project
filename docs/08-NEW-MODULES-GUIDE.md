@@ -1,14 +1,6 @@
 # Guide: Adding a New AI Agent Module
 
-This guide walks through adding a new AI Agent module (e.g., Onboarding, Benefits, Payroll) to the platform. The process is designed to be straightforward — each module follows the same pattern.
-
-## Overview
-
-Adding a module involves 4 steps:
-1. Register the module in the config
-2. Create the route files
-3. Add hardcoded data
-4. Build the UI components
+This guide walks through adding a new AI Agent module to the platform. Follow the same pattern used by Engee, Benefits, and Payroll.
 
 ---
 
@@ -17,113 +9,56 @@ Adding a module involves 4 steps:
 Edit `src/lib/modules.ts` and add your module to the `AI_MODULES` array:
 
 ```typescript
-// In AI_MODULES array, change enabled from false to true and add subPages:
 {
-  name: "Onboarding",
-  slug: "onboarding",
-  icon: UserPlus,              // Lucide icon
-  accentColor: "brand-teal",   // Pick a brand color for this module
-  enabled: true,               // Change from false to true
-  description: "Automated employee onboarding workflows",
-  subPages: [
-    { name: "Dashboard", path: "/onboarding", icon: "analytics-dashboard" },
-    { name: "Tasks", path: "/onboarding/tasks", icon: "checklist" },
-    { name: "Documents", path: "/onboarding/documents", icon: "HR" },
-    { name: "Checklists", path: "/onboarding/checklists", icon: "team" },
-  ],
-},
-```
-
-This single change will:
-- Show the module as active (not locked) in the sidebar
-- Display the sub-navigation when the module is active
-- Use the correct accent color for active state highlighting
-
----
-
-## Step 2: Create Route Files
-
-Create a directory under `src/app/(dashboard)/` matching your module slug:
-
-```
-src/app/(dashboard)/onboarding/
-├── page.tsx              # Dashboard (required)
-├── tasks/
-│   ├── page.tsx          # Tasks list
-│   └── [id]/
-│       └── page.tsx      # Task detail
-├── documents/
-│   └── page.tsx          # Documents list
-└── checklists/
-    └── page.tsx          # Checklists list
-```
-
-### Dashboard Template
-
-Every module dashboard follows this pattern:
-
-```tsx
-// src/app/(dashboard)/onboarding/page.tsx
-import { HeroBanner } from "@/components/shared/hero-banner";
-import { StatsCard } from "@/components/shared/stats-card";
-
-// Import your hardcoded data
-import { ONBOARDING_TASKS } from "@/data/onboarding/tasks";
-
-export default function OnboardingDashboard() {
-  const activeTasks = ONBOARDING_TASKS.filter(t => t.status === "active").length;
-
-  return (
-    <div className="space-y-8">
-      {/* Hero Banner */}
-      <HeroBanner
-        title="Onboarding Haigent"
-        subtitle="Automated employee onboarding workflows with AI task management"
-        bgColor="bg-brand-teal"        // Your module's accent color
-        badgeColor="bg-brand-pink"
-      />
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard
-          label="Active Onboardings"
-          value={activeTasks}
-          bgColor="bg-brand-teal"
-          href="/onboarding/tasks"
-        />
-        <StatsCard label="Pending Tasks" value={12} bgColor="bg-brand-pink" />
-        <StatsCard label="Completion Rate" value="85%" bgColor="bg-brand-green" />
-        <StatsCard label="Avg. Days" value={14} bgColor="bg-brand-gold" />
-      </div>
-
-      {/* Module-specific content sections */}
-      {/* ... */}
-    </div>
-  );
+  name: "Reference",
+  slug: "reference",
+  icon: ClipboardCheck,
+  accentColor: "brand-teal",   // pick an unused brand color
+  enabled: true,               // change from false → true
+  description: "Automated reference check workflows",
+  subPages: [],
 }
 ```
 
-### List Page Template
+This single change activates the module in the sidebar with the correct accent color and active highlight.
+
+**Available brand colors:**
+
+| Token | Hex | Currently Used By |
+|---|---|---|
+| `brand-pink` | `#E91E8C` | Schedule |
+| `brand-gold` | `#F5A623` | Sourcing |
+| `brand-teal` | `#00BFA5` | Reference (reserved) |
+| `brand-lime` | `#9ABF45` | Onboarding, Engee |
+| `brand-yellow` | `#F3CF63` | Benefits |
+| `brand-cyan` | `#19A9B6` | Payroll |
+| `brand-coral` | `#E35B6D` | Error states |
+
+---
+
+## Step 2: Create the Page
+
+```
+src/app/(dashboard)/reference/
+└── page.tsx
+```
+
+Every module page uses `HeroBanner` for the header:
 
 ```tsx
-// src/app/(dashboard)/onboarding/tasks/page.tsx
-import { PageHeader } from "@/components/shared/page-header";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { ONBOARDING_TASKS } from "@/data/onboarding/tasks";
+import { HeroBanner } from "@/components/shared/hero-banner";
 
-export default function TasksPage() {
+export default function ReferencePage() {
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Onboarding Tasks"
-        description="Manage onboarding task assignments and progress"
-        actionLabel="Create Task"
-        actionHref="/onboarding/tasks/new"
+      <HeroBanner
+        title="Reference"
+        subtitle="Automated reference check workflows"
+        bgColor="bg-gradient-to-r from-brand-teal to-brand-teal/80"
+        badgeColor="bg-brand-charcoal/80"
+        badgeText="AI-Powered"
       />
-
-      {/* Stats row */}
-      {/* Data table or card grid */}
-      {/* Empty state if no data */}
+      {/* content */}
     </div>
   );
 }
@@ -131,101 +66,116 @@ export default function TasksPage() {
 
 ---
 
-## Step 3: Add Hardcoded Data
+## Step 3: Build the AI Agent (if applicable)
 
-Create a data directory for your module:
+If the module needs an AI agent, follow the Engee pattern:
 
-```
-src/data/onboarding/
-├── tasks.ts
-├── documents.ts
-└── checklists.ts
-```
-
-Example data file:
+### API Route (`src/app/api/<module>/chat/route.ts`)
 
 ```typescript
-// src/data/onboarding/tasks.ts
-export interface OnboardingTask {
-  id: string;
-  title: string;
-  description: string;
-  assignee: string;
-  status: "pending" | "in_progress" | "completed";
-  dueDate: string;
-  category: string;
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// 1. Define tools
+const tools: Anthropic.Tool[] = [ /* ... */ ];
+
+// 2. Define tool executor
+async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
+  // handle each tool name
 }
 
-export const ONBOARDING_TASKS: OnboardingTask[] = [
-  {
-    id: "task-1",
-    title: "Complete tax forms",
-    description: "Fill out W-4 and state tax forms",
-    assignee: "Sarah Chen",
-    status: "pending",
-    dueDate: "2026-02-15",
-    category: "Compliance",
-  },
-  {
-    id: "task-2",
-    title: "Set up workstation",
-    description: "IT will prepare laptop, accounts, and access badges",
-    assignee: "IT Department",
-    status: "in_progress",
-    dueDate: "2026-02-12",
-    category: "IT Setup",
-  },
-  // Add more realistic sample data...
-];
+// 3. System prompt
+const SYSTEM_PROMPT = `You are [AgentName], an AI agent for [purpose]...`;
+
+// 4. Agentic loop
+export async function POST(request: NextRequest) {
+  const { messages } = await request.json();
+  let currentMessages = [...messages];
+
+  for (let i = 0; i < 10; i++) {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2048,
+      system: SYSTEM_PROMPT,
+      tools,
+      messages: currentMessages,
+    });
+
+    if (response.stop_reason === "end_turn") {
+      return NextResponse.json({ response: extractText(response), messages: [...currentMessages, { role: "assistant", content: response.content }] });
+    }
+
+    if (response.stop_reason === "tool_use") {
+      // execute tools, append results, continue loop
+    }
+  }
+}
 ```
+
+### Chat UI Component (`src/components/<module>/agent-chat.tsx`)
+
+Copy and adapt `src/components/engee/agent-chat.tsx`. Key props to change:
+- Brand color: replace `brand-lime` with your module's accent color
+- API endpoint: replace `/api/engee/chat` with `/api/<module>/chat`
+- Suggestion prompts and placeholder text
 
 ---
 
-## Step 4: Build Module-Specific Components (Optional)
+## Step 4: Add External Integration (if applicable)
 
-If your module needs custom UI components beyond the shared ones, create them in:
+### ServiceNow
 
+```typescript
+import { queryTable, updateRecord } from "@/lib/servicenow";
+
+const records = await queryTable("your_table_name", {
+  sysparm_display_value: true,
+  sysparm_limit: 50,
+});
 ```
-src/components/onboarding/
-├── task-card.tsx
-├── checklist-builder.tsx
-└── progress-tracker.tsx
+
+Requires `.env.local`:
+```
+SERVICENOW_INSTANCE_URL=
+SERVICENOW_USERNAME=
+SERVICENOW_PASSWORD=
+```
+
+### Microsoft Graph API (Calendar)
+
+Use the existing `src/lib/calendar.ts`:
+```typescript
+import { findAvailableMeetingSlots, formatSlotsForDisplay } from "@/lib/calendar";
+
+const { slots, source } = await findAvailableMeetingSlots({
+  employeeEmail: "user@company.com",
+  mentorEmail: "mentor@company.com",
+  timePreference: "flexible",
+});
+```
+
+Requires `.env.local` (falls back to mock slots if absent):
+```
+MICROSOFT_TENANT_ID=
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+```
+
+### Teams / Slack
+
+```typescript
+// Teams — POST JSON to TEAMS_WEBHOOK_URL
+// Slack — POST payload to SLACK_WEBHOOK_URL
 ```
 
 ---
 
 ## Checklist
 
-Use this checklist when adding a new module:
-
-- [ ] Module registered in `src/lib/modules.ts` with `enabled: true`
-- [ ] Dashboard page created at `src/app/(dashboard)/<slug>/page.tsx`
-- [ ] Sub-pages created for each item in `subPages` config
-- [ ] Hardcoded data files created in `src/data/<slug>/`
-- [ ] TypeScript interfaces defined for data types
-- [ ] Dashboard uses `HeroBanner` and `StatsCard` shared components
-- [ ] List pages use `PageHeader` and appropriate data display
-- [ ] Empty states shown where no data exists
-- [ ] Navigation works: sidebar highlights correctly, sub-nav renders
-
----
-
-## Tips
-
-- **Follow existing patterns** — look at how Schedule and Sourcing are built
-- **Keep data minimal** — 2-5 records per entity is enough for a demo
-- **Use shared components** — `HeroBanner`, `StatsCard`, `PageHeader`, `StatusBadge`, `EmptyState`
-- **Pick a brand color** — each module uses one of the 5 brand colors as its accent
-- **Ask Claude Code** — use Claude Code to help scaffold the module. The `CLAUDE.md` file in the project root has context for AI-assisted development
-
-## Brand Colors Available
-
-| Color | Token | Used By |
-|---|---|---|
-| Pink | `brand-pink` | Schedule |
-| Gold | `brand-gold` | Sourcing |
-| Teal | `brand-teal` | Available |
-| Green | `brand-green` | Available |
-| Charcoal | `brand-charcoal` | Sidebar (reserved) |
-
-When adding a new module, pick an unused accent color or reuse one that makes sense for the module's theme.
+- [ ] Module registered in `src/lib/modules.ts` with `enabled: true` and correct `accentColor`
+- [ ] Page created at `src/app/(dashboard)/<slug>/page.tsx` using `HeroBanner`
+- [ ] API route created at `src/app/api/<module>/chat/route.ts` (if AI agent needed)
+- [ ] Chat UI component in `src/components/<module>/agent-chat.tsx` using module's accent color
+- [ ] All external integrations degrade gracefully when env vars are absent
+- [ ] Sidebar highlights correctly when module is active
