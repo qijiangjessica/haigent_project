@@ -1,28 +1,19 @@
-import { DollarSign } from "lucide-react";
 import { AgentChat } from "@/components/payroll/agent-chat";
+import { HeroBanner } from "@/components/shared/hero-banner";
 
 export default function PayrollPage() {
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-brand-cyan/10 flex items-center justify-center">
-          <DollarSign className="h-5 w-5 text-brand-cyan" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            Payroll Haigent
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            AI-powered payroll assistant connected to Salesforce Agentforce
-          </p>
-        </div>
-      </div>
+      <HeroBanner
+        title="Payroll"
+        subtitle="AI-powered payroll assistant connected to Salesforce Agentforce"
+        bgColor="bg-gradient-to-r from-brand-cyan to-brand-cyan/80"
+        badgeColor="bg-brand-charcoal/80"
+        badgeText="AI-Powered"
+      />
 
       {/* Chat */}
-      <div className="max-w-2xl">
-        <AgentChat />
-      </div>
+      <AgentChat />
     </div>
   );
 }

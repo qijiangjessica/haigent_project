@@ -1,20 +1,13 @@
 import { NextResponse } from "next/server";
-import { queryTable, BENEFIT_TYPES_TABLE, BENEFIT_ENROLLMENT_TABLE } from "@/lib/servicenow";
+import { getBenefitCatalog, getAllInquiries } from "@/lib/benefits-store";
 
 export async function GET() {
   try {
-    const [benefitTypes, enrollments] = await Promise.all([
-      queryTable(BENEFIT_TYPES_TABLE, {
-        sysparm_display_value: true,
-        sysparm_limit: 50,
-      }),
-      queryTable(BENEFIT_ENROLLMENT_TABLE, {
-        sysparm_display_value: true,
-        sysparm_limit: 100,
-      }),
+    const [benefitTypes, inquiries] = await Promise.all([
+      getBenefitCatalog(),
+      getAllInquiries(),
     ]);
-
-    return NextResponse.json({ benefitTypes, enrollments });
+    return NextResponse.json({ benefitTypes, inquiries });
   } catch (error) {
     console.error("Failed to fetch benefits data:", error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
