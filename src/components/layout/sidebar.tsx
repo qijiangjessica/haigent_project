@@ -22,9 +22,34 @@ export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarP
   const [showTopFade, setShowTopFade] = useState(false);
   const [showBottomFade, setShowBottomFade] = useState(false);
 
-  const activeModule = AI_MODULES.find(
-    (m) => m.enabled && pathname.startsWith(`/${m.slug}`)
-  );
+  const activeModule =
+  const [expandedSlugs, setExpandedSlugs] = useState<Set<string>>(() => {
+    const active = AI_MODULES.find(
+      (m) => m.enabled && pathname.startsWith(`/${m.slug}`)
+    );
+    return active && active.subPages.length > 0
+      ? new Set([active.slug])
+      : new Set();
+  });
+
+  // Auto-expand the active module when the route changes
+  useEffect(() => {
+    const active = AI_MODULES.find(
+      (m) => m.enabled && pathname.startsWith(`/${m.slug}`)
+    );
+    if (active && active.subPages.length > 0) {
+      setExpandedSlugs((prev) => new Set([...prev, active.slug]));
+    }
+  }, [pathname]);
+
+  const toggle = (slug: string) => {
+    setExpandedSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  };
 
   const updateFades = useCallback(() => {
     const el = scrollRef.current;
