@@ -1,0 +1,216 @@
+{
+	"schema": {
+		"version": "1.0",
+		"domain": "EmployeeOnboarding",
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"$id": "employee_onboarding_v1",
+		"title": "EmployeeOnboarding",
+		"description": "Unified employee onboarding schema combining identity, lifecycle status, task checklist, and role-based access control. Derived from Employee, Data Schema, Choice, and Onboarding Role sheets.",
+		"type": "object",
+		"required": [
+			"employee_id",
+			"employee_name",
+			"employee_email",
+			"department",
+			"position",
+			"start_date",
+			"onboarding_status"
+		],
+		"properties": {
+			"employee_id": {
+				"type": "string",
+				"maxLength": 50,
+				"description": "Unique employee identifier assigned by the HR system."
+			},
+			"employee_name": {
+				"type": "string",
+				"maxLength": 100,
+				"description": "Full legal name of the employee."
+			},
+			"employee_email": {
+				"type": "string",
+				"format": "email",
+				"maxLength": 100,
+				"description": "Work email address. Must be unique across all employee records."
+			},
+			"department": {
+				"type": "string",
+				"maxLength": 80,
+				"description": "Business unit or department the employee is assigned to."
+			},
+			"position": {
+				"type": "string",
+				"maxLength": 100,
+				"description": "Job title or role of the employee."
+			},
+			"start_date": {
+				"type": "string",
+				"format": "date",
+				"description": "Official employment start date in ISO 8601 format (YYYY-MM-DD)."
+			},
+			"manager": {
+				"type": [
+					"string",
+					"null"
+				],
+				"maxLength": 50,
+				"references": "sys_user.sys_id",
+				"description": "Reference to the reporting manager's user ID in sys_user. Null if not yet assigned."
+			},
+			"onboarding_status": {
+				"type": "string",
+				"enum": [
+					"pending",
+					"in_progress",
+					"completed",
+					"on_hold"
+				],
+				"default": "pending",
+				"description": "Current aggregate onboarding lifecycle state.",
+				"enumMeta": {
+					"pending": {
+						"label": "Pending",
+						"sequence": 0,
+						"description": "Employee record created but no onboarding steps have started yet."
+					},
+					"in_progress": {
+						"label": "In Progress",
+						"sequence": 1,
+						"description": "At least one checklist item is true; onboarding is actively underway."
+					},
+					"completed": {
+						"label": "Completed",
+						"sequence": 2,
+						"description": "All checklist items are true and onboarding is fully done."
+					},
+					"on_hold": {
+						"label": "On Hold",
+						"sequence": 3,
+						"description": "Onboarding is paused; can be set from any state and resumed later."
+					}
+				}
+			},
+			"equipment_requested": {
+				"type": "boolean",
+				"default": false,
+				"description": "Hardware or equipment request has been submitted.",
+				"responsible_role": "it_onboarding"
+			},
+			"it_account_created": {
+				"type": "boolean",
+				"default": false,
+				"description": "IT accounts including email, SSO, and tools have been provisioned.",
+				"responsible_role": "it_onboarding"
+			},
+			"workspace_assigned": {
+				"type": "boolean",
+				"default": false,
+				"description": "Physical or virtual workspace has been assigned to the employee.",
+				"responsible_role": "hr_onboarding_admin"
+			},
+			"orientation_completed": {
+				"type": "boolean",
+				"default": false,
+				"description": "Employee has attended the company orientation session.",
+				"responsible_role": "hr_onboarding_admin"
+			},
+			"documents_completed": {
+				"type": "boolean",
+				"default": false,
+				"description": "All general onboarding paperwork beyond HR contracts has been submitted (e.g. tax forms, direct deposit setup).",
+				"responsible_role": "hr_onboarding_admin"
+			},
+			"hr_documents_completed": {
+				"type": "boolean",
+				"default": false,
+				"description": "HR-specific documents — employment contract, NDA, and policy acknowledgements — have been signed. Corresponds to 'HR Documents Completed' in the source table.",
+				"responsible_role": "hr_onboarding_admin"
+			},
+			"employee_training": {
+				"type": "boolean",
+				"default": false,
+				"description": "Mandatory onboarding training modules have been finished.",
+				"responsible_role": "onboarding_manager"
+			},
+			"notes": {
+				"type": [
+					"string",
+					"null"
+				],
+				"maxLength": 500,
+				"description": "Free-text remarks about the employee or their onboarding context."
+			}
+		},
+		"additionalProperties": false,
+		"x_roles": {
+			"description": "Role definitions governing who can read or write each part of this schema.",
+			"roles": {
+				"hr_onboarding_admin": {
+					"description": "HR administrators who manage all aspects of onboarding records.",
+					"permissions": [
+						"create",
+						"read",
+						"update",
+						"delete"
+					],
+					"checklist_scope": [
+						"workspace_assigned",
+						"orientation_completed",
+						"documents_completed",
+						"hr_documents_completed"
+					]
+				},
+				"onboarding_manager": {
+					"description": "Managers who can view and update onboarding records for their direct reports.",
+					"permissions": [
+						"read",
+						"update"
+					],
+					"checklist_scope": [
+						"employee_training"
+					]
+				},
+				"it_onboarding": {
+					"description": "IT personnel who manage IT-related onboarding tasks.",
+					"permissions": [
+						"read",
+						"update"
+					],
+					"checklist_scope": [
+						"equipment_requested",
+						"it_account_created"
+					]
+				}
+			}
+		},
+		"relationships": [
+			{
+				"from": "EmployeeOnboarding.manager",
+				"to": "sys_user.sys_id",
+				"type": "many-to-one",
+				"description": "manager field references the sys_user table in ServiceNow. Null if no manager is assigned yet."
+			}
+		],
+		"businessRules": [
+			{
+				"rule": "status_completion",
+				"description": "onboarding_status cannot be set to 'completed' unless all checklist fields are true.",
+				"expression": "status == 'completed' REQUIRES ALL(equipment_requested, it_account_created, workspace_assigned, orientation_completed, documents_completed, hr_documents_completed, employee_training) == true"
+			},
+			{
+				"rule": "status_sequence",
+				"description": "Status follows sequence pending(0) → in_progress(1) → completed(2). on_hold(3) can be set from any state. Status cannot go backwards.",
+				"expression": "onboarding_status.sequence is monotonically increasing except when transitioning to or from on_hold"
+			},
+			{
+				"rule": "manager_assignment",
+				"description": "manager may be null at record creation but must be populated before onboarding_status transitions to 'in_progress'.",
+				"expression": "status == 'in_progress' REQUIRES manager != null"
+			},
+			{
+				"rule": "status_auto_progress",
+				"description": "When all checklist items become true, onboarding_status should automatically advance to 'completed' unless it is currently 'on_hold'."
+			}
+		]
+	}
+}
