@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { MATCH_RECORDS } from "@/data/reference/matches";
+import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCE_JOBS, OPEN_JOBS } from "@/data/reference/jobs";
 import {
   Settings2,
@@ -92,8 +93,9 @@ function computeScore(
   );
 }
 
-function classifyScore(score: number): "Strong Match" | "Partial Match" | "No Match" {
-  return score >= 70 ? "Strong Match" : score >= 50 ? "Partial Match" : "No Match";
+// classifyScore is now threshold-aware — called with thresholds from state
+function classifyScore(score: number, t: { strong_match: number; partial_match: number }): "Strong Match" | "Partial Match" | "No Match" {
+  return score >= t.strong_match ? "Strong Match" : score >= t.partial_match ? "Partial Match" : "No Match";
 }
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
@@ -108,9 +110,26 @@ const JOB_TITLE: Record<string, string> = Object.fromEntries(
   REFERENCE_JOBS.map((j) => [j.id, j.title])
 );
 
-// ── Preview sample — first 6 seeded match records ─────────────────
+// ── Preview sample — best match record per candidate (up to 6) ────
+// MATCH_RECORDS has multiple rows per candidate (one per job).
+// Grouping by candidate prevents duplicate job titles in the preview.
 
-const PREVIEW_RECORDS = MATCH_RECORDS.slice(0, 6);
+const PREVIEW_CANDIDATES = (() => {
+  const seen = new Set<string>();
+  const best: typeof MATCH_RECORDS = [];
+  for (const m of MATCH_RECORDS) {
+    if (!seen.has(m.candidate_id)) {
+      seen.add(m.candidate_id);
+      best.push(m);
+      if (best.length === 6) break;
+    }
+  }
+  return best;
+})();
+
+const CANDIDATE_NAME: Record<string, string> = Object.fromEntries(
+  REFERENCE_CANDIDATES.map((c) => [c.candidate_id, c.name])
+);
 
 // ── Component ──────────────────────────────────────────────────────
 
@@ -143,6 +162,22 @@ export default function ScoringConfigPage() {
   } | null>(null);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
 
+  // Threshold state
+  interface ThresholdConfig { strong_match: number; partial_match: number }
+  const DEFAULT_THRESHOLDS: ThresholdConfig = { strong_match: 70, partial_match: 50 };
+  const [thresholds, setThresholds] = useState<ThresholdConfig>(DEFAULT_THRESHOLDS);
+  const [savedThresholds, setSavedThresholds] = useState<ThresholdConfig>(DEFAULT_THRESHOLDS);
+  const [thresholdSaving, setThresholdSaving] = useState(false);
+  const [thresholdStatus, setThresholdStatus] = useState<"idle" | "success" | "error">("idle");
+  // Draft strings for threshold inputs — allows free-form typing without immediate clamping
+  const [strongDraft, setStrongDraft] = useState<string>("");
+  const [partialDraft, setPartialDraft] = useState<string>("");
+  const isThresholdDirty =
+    thresholds.strong_match !== savedThresholds.strong_match ||
+    thresholds.partial_match !== savedThresholds.partial_match;
+  const isThresholdValid = thresholds.strong_match > thresholds.partial_match &&
+    thresholds.partial_match >= 0 && thresholds.strong_match <= 100;
+
   // Per-job overrides state
   const [jobEntries, setJobEntries] = useState<JobOverrideEntry[]>([]);
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
@@ -160,6 +195,12 @@ export default function ScoringConfigPage() {
         if (configData.weights) {
           setWeights(configData.weights);
           setSaved(configData.weights);
+        }
+        if (configData.thresholds) {
+          setThresholds(configData.thresholds);
+          setSavedThresholds(configData.thresholds);
+          setStrongDraft(String(configData.thresholds.strong_match));
+          setPartialDraft(String(configData.thresholds.partial_match));
         }
         if (jobData.jobs) {
           setJobEntries(jobData.jobs);
@@ -257,6 +298,33 @@ export default function ScoringConfigPage() {
     }
   };
 
+  // ── Threshold save handler ──────────────────────────────────────
+
+  async function handleSaveThresholds() {
+    if (!isThresholdValid || thresholdSaving) return;
+    setThresholdSaving(true);
+    setThresholdStatus("idle");
+    try {
+      const res = await fetch("/api/reference/scoring-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, thresholds }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSavedThresholds(data.thresholds ?? thresholds);
+        setThresholdStatus("success");
+        setTimeout(() => setThresholdStatus("idle"), 3000);
+      } else {
+        setThresholdStatus("error");
+      }
+    } catch {
+      setThresholdStatus("error");
+    } finally {
+      setThresholdSaving(false);
+    }
+  }
+
   // ── Bulk re-score handler ───────────────────────────────────────
 
   async function handleBulkRescore() {
@@ -321,11 +389,31 @@ export default function ScoringConfigPage() {
         setRescoreProgress({ done: i + 1, total: referrals.length });
       }
 
+      // 5. Re-score seeded/static candidates using their stored component scores + new saved weights
+      const seededRows: { name: string; oldBest: number | null; newBest: number; delta: number }[] = [];
+      const seenCandidateIds = new Set<string>();
+      for (const record of MATCH_RECORDS) {
+        if (seenCandidateIds.has(record.candidate_id)) continue;
+        seenCandidateIds.add(record.candidate_id);
+        const candidateRecords = MATCH_RECORDS.filter((m) => m.candidate_id === record.candidate_id);
+        const oldBest = Math.max(...candidateRecords.map((m) => m.match_score));
+        const newBest = Math.max(...candidateRecords.map((m) => computeScore(m, weights)));
+        const candidate = REFERENCE_CANDIDATES.find((c) => c.candidate_id === record.candidate_id);
+        seededRows.push({
+          name: candidate?.name ?? record.candidate_id,
+          oldBest,
+          newBest,
+          delta: newBest - oldBest,
+        });
+      }
+
+      const allRows = [...rows, ...seededRows];
+
       // 4. Summarise
-      const improved  = rows.filter((r) => r.delta > 0).length;
-      const decreased = rows.filter((r) => r.delta < 0).length;
-      const unchanged = rows.filter((r) => r.delta === 0).length;
-      setRescoreResults({ total: rows.length, improved, unchanged, decreased, rows });
+      const improved  = allRows.filter((r) => r.delta > 0).length;
+      const decreased = allRows.filter((r) => r.delta < 0).length;
+      const unchanged = allRows.filter((r) => r.delta === 0).length;
+      setRescoreResults({ total: allRows.length, improved, unchanged, decreased, rows: allRows });
     } catch {
       setRescoreError("Failed to complete bulk re-score. Please try again.");
     } finally {
@@ -570,8 +658,198 @@ export default function ScoringConfigPage() {
             <p className="text-xs text-muted-foreground leading-relaxed">
               These weights apply to <strong>new referral submissions</strong>. Existing match
               records retain the scores they were computed with. To re-score existing candidates,
-              re-submit them or contact an administrator.
+              use the bulk re-score tool below.
             </p>
+          </div>
+
+          {/* ── Threshold editor ─────────────────────────────────── */}
+          <div className="bg-white rounded-xl border border-border shadow-sm p-6 space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-muted-foreground" />
+                <h3 className="font-semibold text-sm text-foreground">Classification Thresholds</h3>
+              </div>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Score Zones
+              </span>
+            </div>
+
+            {!isThresholdValid && (
+              <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/5 border border-destructive/20 rounded-lg px-3 py-2">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                Strong Match must be greater than Partial Match.
+              </div>
+            )}
+
+            {/* Unified zone bar */}
+            <div className="space-y-2">
+              <div className="flex h-5 rounded-lg overflow-hidden gap-0.5">
+                <div
+                  className="bg-muted transition-all duration-200 rounded-l-lg"
+                  style={{ width: `${thresholds.partial_match}%` }}
+                  title={`No Match: 0–${thresholds.partial_match - 1}`}
+                />
+                <div
+                  className="bg-brand-gold/70 transition-all duration-200"
+                  style={{ width: `${Math.max(0, thresholds.strong_match - thresholds.partial_match)}%` }}
+                  title={`Partial Match: ${thresholds.partial_match}–${thresholds.strong_match - 1}`}
+                />
+                <div
+                  className="bg-brand-green flex-1 transition-all duration-200 rounded-r-lg"
+                  title={`Strong Match: ${thresholds.strong_match}–100`}
+                />
+              </div>
+              {/* Zone tick labels */}
+              <div className="relative h-4">
+                <span className="absolute left-0 text-[10px] text-muted-foreground">0</span>
+                <span
+                  className="absolute text-[10px] text-brand-gold font-medium -translate-x-1/2"
+                  style={{ left: `${thresholds.partial_match}%` }}
+                >
+                  {thresholds.partial_match}
+                </span>
+                <span
+                  className="absolute text-[10px] text-brand-green font-medium -translate-x-1/2"
+                  style={{ left: `${thresholds.strong_match}%` }}
+                >
+                  {thresholds.strong_match}
+                </span>
+                <span className="absolute right-0 text-[10px] text-muted-foreground">100</span>
+              </div>
+              {/* Legend */}
+              <div className="flex gap-4 flex-wrap">
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="w-2 h-2 rounded-sm bg-muted inline-block border border-border" />
+                  No Match: 0–{thresholds.partial_match - 1}
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-brand-gold">
+                  <span className="w-2 h-2 rounded-sm bg-brand-gold/70 inline-block" />
+                  Partial Match: {thresholds.partial_match}–{thresholds.strong_match - 1}
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-brand-green">
+                  <span className="w-2 h-2 rounded-sm bg-brand-green inline-block" />
+                  Strong Match: {thresholds.strong_match}–100
+                </span>
+              </div>
+            </div>
+
+            {/* Stepper controls */}
+            <div className="grid grid-cols-2 gap-4 pt-1">
+              {/* Strong Match stepper */}
+              <div className="bg-brand-green/5 rounded-lg p-4 space-y-3 border border-brand-green/20">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-brand-green inline-block" />
+                  <span className="text-xs font-semibold text-brand-green uppercase tracking-wider">Strong Match</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">Score at or above this value</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setThresholds((p) => ({ ...p, strong_match: Math.max(p.partial_match + 1, p.strong_match - 1) }));
+                      setStrongDraft((prev) => String(Math.max(thresholds.partial_match + 1, Number(prev) - 1)));
+                    }}
+                    disabled={thresholds.strong_match <= thresholds.partial_match + 1}
+                    className="w-8 h-8 rounded-md bg-muted text-foreground hover:bg-muted/80 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base font-bold transition-colors border border-border"
+                  >−</button>
+                  <input
+                    type="number"
+                    min={thresholds.partial_match + 1}
+                    max={100}
+                    value={strongDraft}
+                    onChange={(e) => setStrongDraft(e.target.value)}
+                    onBlur={(e) => {
+                      const val = Math.max(thresholds.partial_match + 1, Math.min(100, parseInt(e.target.value, 10) || thresholds.strong_match));
+                      setThresholds((p) => ({ ...p, strong_match: val }));
+                      setStrongDraft(String(val));
+                    }}
+                    className="flex-1 text-center text-lg font-mono font-bold text-foreground bg-white border border-border rounded-md py-1 focus:outline-none focus:ring-1 focus:ring-brand-teal"
+                  />
+                  <button
+                    onClick={() => {
+                      setThresholds((p) => ({ ...p, strong_match: Math.min(100, p.strong_match + 1) }));
+                      setStrongDraft((prev) => String(Math.min(100, Number(prev) + 1)));
+                    }}
+                    disabled={thresholds.strong_match >= 100}
+                    className="w-8 h-8 rounded-md bg-muted text-foreground hover:bg-muted/80 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base font-bold transition-colors border border-border"
+                  >+</button>
+                </div>
+              </div>
+
+              {/* Partial Match stepper */}
+              <div className="bg-brand-gold/5 rounded-lg p-4 space-y-3 border border-brand-gold/20">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-brand-gold inline-block" />
+                  <span className="text-xs font-semibold text-brand-gold uppercase tracking-wider">Partial Match</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">Score at or above this value</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setThresholds((p) => ({ ...p, partial_match: Math.max(0, p.partial_match - 1) }));
+                      setPartialDraft((prev) => String(Math.max(0, Number(prev) - 1)));
+                    }}
+                    disabled={thresholds.partial_match <= 0}
+                    className="w-8 h-8 rounded-md bg-muted text-foreground hover:bg-muted/80 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base font-bold transition-colors border border-border"
+                  >−</button>
+                  <input
+                    type="number"
+                    min={0}
+                    max={thresholds.strong_match - 1}
+                    value={partialDraft}
+                    onChange={(e) => setPartialDraft(e.target.value)}
+                    onBlur={(e) => {
+                      const val = Math.max(0, Math.min(thresholds.strong_match - 1, parseInt(e.target.value, 10) || thresholds.partial_match));
+                      setThresholds((p) => ({ ...p, partial_match: val }));
+                      setPartialDraft(String(val));
+                    }}
+                    className="flex-1 text-center text-lg font-mono font-bold text-foreground bg-white border border-border rounded-md py-1 focus:outline-none focus:ring-1 focus:ring-brand-teal"
+                  />
+                  <button
+                    onClick={() => {
+                      setThresholds((p) => ({ ...p, partial_match: Math.min(p.strong_match - 1, p.partial_match + 1) }));
+                      setPartialDraft((prev) => String(Math.min(thresholds.strong_match - 1, Number(prev) + 1)));
+                    }}
+                    disabled={thresholds.partial_match >= thresholds.strong_match - 1}
+                    className="w-8 h-8 rounded-md bg-muted text-foreground hover:bg-muted/80 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base font-bold transition-colors border border-border"
+                  >+</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2 border-t border-border">
+              <button
+                onClick={handleSaveThresholds}
+                disabled={!isThresholdValid || thresholdSaving || !isThresholdDirty}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-teal text-white text-sm font-medium hover:bg-brand-teal/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {thresholdSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {thresholdSaving ? "Saving…" : "Save Thresholds"}
+              </button>
+              <button
+                onClick={() => {
+                  setThresholds(DEFAULT_THRESHOLDS);
+                  setStrongDraft(String(DEFAULT_THRESHOLDS.strong_match));
+                  setPartialDraft(String(DEFAULT_THRESHOLDS.partial_match));
+                }}
+                disabled={thresholdSaving}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:bg-muted transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset to Defaults
+              </button>
+              {thresholdStatus === "success" && (
+                <span className="flex items-center gap-1 text-xs text-brand-green">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Saved
+                </span>
+              )}
+              {thresholdStatus === "error" && (
+                <span className="flex items-center gap-1 text-xs text-destructive">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Save failed
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -587,19 +865,22 @@ export default function ScoringConfigPage() {
             </p>
 
             <div className="space-y-3">
-              {PREVIEW_RECORDS.map((m) => {
+              {PREVIEW_CANDIDATES.map((m) => {
                 const oldScore = m.match_score;
                 const newScore = computeScore(m, weights);
-                const newClass = classifyScore(newScore);
+                const newClass = classifyScore(newScore, thresholds);
                 const delta = newScore - oldScore;
 
                 return (
                   <div
-                    key={m.match_id}
+                    key={m.candidate_id}
                     className="flex items-start justify-between gap-2 p-3 rounded-lg bg-muted/40 border border-border"
                   >
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-foreground truncate">
+                        {CANDIDATE_NAME[m.candidate_id] ?? m.candidate_id}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                         {JOB_TITLE[m.posting_id] ?? m.posting_id}
                       </p>
                       <span
@@ -630,7 +911,7 @@ export default function ScoringConfigPage() {
             </div>
 
             <p className="text-xs text-muted-foreground mt-3 text-center">
-              Showing {PREVIEW_RECORDS.length} of {MATCH_RECORDS.length} seeded records
+              Showing {PREVIEW_CANDIDATES.length} of {new Set(MATCH_RECORDS.map(m => m.candidate_id)).size} seeded candidates
             </p>
           </div>
 
@@ -665,7 +946,7 @@ export default function ScoringConfigPage() {
             <div>
               <h3 className="font-semibold text-sm text-foreground">Re-score Existing Candidates</h3>
               <p className="text-xs text-muted-foreground mt-0.5 max-w-xl">
-                Apply the current saved weights to all submitted referrals. New match records are appended — existing records are kept for history. Best used after saving new global weights.
+                Apply the current saved weights to all candidates — both seeded candidates and submitted referrals. Seeded candidates are re-scored instantly from their component scores; referral scores are updated via the API.
               </p>
             </div>
           </div>

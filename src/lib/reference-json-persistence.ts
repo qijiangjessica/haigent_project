@@ -28,6 +28,7 @@ import {
   setJobWeightOverride, getJobWeightOverride, getAllJobWeightOverrides, deleteJobWeightOverride,
   addHiredEvent, getHiredEvents,
   addBonusFlag, getBonusFlags, updateBonusFlag,
+  setThresholds, getThresholds,
   type SubmittedReferral,
   type LiveMatchRecord,
   type LivePoolEntry,
@@ -36,6 +37,7 @@ import {
   type ScoringWeights,
   type HiredEvent,
   type BonusFlag,
+  type ThresholdConfig,
 } from "@/lib/reference-store";
 
 // ── Types (mirrored for disk shape) ────────────────────────────────────────
@@ -82,6 +84,7 @@ const FILES = {
   jobWeightOverrides: path.join(JSON_DIR, "job-weight-overrides.json"),
   hiredEvents:        path.join(JSON_DIR, "hired-events.json"),
   bonusFlags:         path.join(JSON_DIR, "bonus-flags.json"),
+  thresholds:         path.join(JSON_DIR, "threshold-config.json"),
 } as const;
 
 // ── Internal helpers ────────────────────────────────────────────────────────
@@ -219,6 +222,12 @@ export function setScoringWeightsAndPersist(weights: ScoringWeights): void {
   writeJson(FILES.scoringWeights, getScoringWeights());
 }
 
+/** Set classification thresholds and immediately persist to disk. */
+export function setThresholdsAndPersist(cfg: ThresholdConfig): void {
+  setThresholds(cfg);
+  writeJson(FILES.thresholds, getThresholds());
+}
+
 /** Set a per-job weight override and immediately persist to disk. */
 export function setJobWeightOverrideAndPersist(jobId: string, weights: ScoringWeights): void {
   setJobWeightOverride(jobId, weights);
@@ -273,6 +282,11 @@ export function hydrateStoreFromDisk(): void {
     for (const [k, v] of Object.entries(snap.jobWeightOverrides)) setJobWeightOverride(k, v);
     for (const e  of snap.hiredEvents)                        addHiredEvent(e);
     for (const f  of snap.bonusFlags)                         addBonusFlag(f);
+    // Thresholds are persisted independently — read directly
+    const savedThresholds = readJson<Partial<ThresholdConfig>>(FILES.thresholds, {});
+    if (savedThresholds.strong_match !== undefined && savedThresholds.partial_match !== undefined) {
+      setThresholds(savedThresholds as ThresholdConfig);
+    }
   } catch { /* no disk data yet — first run */ }
 }
 

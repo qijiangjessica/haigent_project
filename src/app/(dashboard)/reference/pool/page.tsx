@@ -48,6 +48,8 @@ interface SubmittedReferral {
   resume_filename: string | null;
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
+  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "in_scheduling" | "hired";
+  skills_claimed: string[];
 }
 
 interface LiveMatchRecord {
@@ -137,6 +139,35 @@ export default function TalentPoolPage() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [activatedSet, setActivatedSet] = useState<Set<string>>(new Set());
+  const [rescoringId, setRescoringId] = useState<string | null>(null);
+  const [rescoreResultId, setRescoreResultId] = useState<string | null>(null);
+
+  async function handleRescore(referralId: string) {
+    setRescoringId(referralId);
+    setRescoreResultId(null);
+    try {
+      const res = await fetch("/api/reference/rescore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ referral_id: referralId }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { match_results: LiveMatchRecord[] };
+        const newMatches: LiveMatchRecord[] = data.match_results ?? [];
+        if (newMatches.length > 0) {
+          // Replace existing matches for this referral with the fresh ones
+          setLiveMatches((prev) => [
+            ...prev.filter((m) => m.referral_id !== referralId),
+            ...newMatches,
+          ]);
+        }
+        setRescoreResultId(referralId);
+        setTimeout(() => setRescoreResultId(null), 4000);
+      }
+    } finally {
+      setRescoringId(null);
+    }
+  }
 
   async function handleActivate(referralId: string) {
     setActivatingId(referralId);
@@ -629,7 +660,11 @@ export default function TalentPoolPage() {
             })}
 
             {/* Live pool entries (promoted from submitted referrals) */}
-            {livePoolEntries.map((entry) => {
+            {livePoolEntries.filter((entry) => {
+              const referral = submittedReferrals.find((r) => r.referral_id === entry.referral_id);
+              // Exclude referrals that have advanced beyond the pool stage
+              return !referral || (referral.pipeline_status === "in_pool" || referral.pipeline_status === "in_review");
+            }).map((entry) => {
               const entryScoreExpanded = expandedScores.has(`lpe-${entry.pool_id}`);
               const entryLiveMatches = liveMatches.filter((m) => m.referral_id === entry.referral_id);
               const bestLiveMatch = entryLiveMatches.length > 0
@@ -743,19 +778,63 @@ export default function TalentPoolPage() {
                     )}
                   </div>
 
-                  {/* Match history */}
-                  {entry.match_evaluation_history.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-border">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-xs font-medium text-muted-foreground">Match Evaluations</p>
+                  {/* Match history + re-score */}
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">Match Evaluations</p>
+                      <div className="flex items-center gap-2">
+                        {rescoreResultId === entry.referral_id && (
+                          <span className="text-xs text-brand-green font-medium flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" /> Scores updated
+                          </span>
+                        )}
                         <button
-                          onClick={() => toggleScore(`lpe-${entry.pool_id}`)}
-                          className="flex items-center gap-1 text-xs text-brand-teal hover:underline"
+                          onClick={() => handleRescore(entry.referral_id)}
+                          disabled={rescoringId === entry.referral_id}
+                          className="flex items-center gap-1 text-xs text-brand-teal hover:underline disabled:opacity-50"
                         >
-                          Score breakdown
-                          {entryScoreExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          {rescoringId === entry.referral_id
+                            ? <><Loader2 className="h-3 w-3 animate-spin" /> Re-scoring…</>
+                            : <><TrendingUp className="h-3 w-3" /> Re-score</>}
                         </button>
+                        {(entry.match_evaluation_history.length > 0 || entryLiveMatches.length > 0) && (
+                          <button
+                            onClick={() => toggleScore(`lpe-${entry.pool_id}`)}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            Breakdown
+                            {entryScoreExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          </button>
+                        )}
                       </div>
+                    </div>
+                    {/* Live match scores (from liveMatches, updated by re-score) */}
+                    {entryLiveMatches.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {entryLiveMatches
+                          .reduce<LiveMatchRecord[]>((acc, m) => {
+                            const ex = acc.find((x) => x.posting_id === m.posting_id);
+                            if (!ex || m.evaluated_date >= ex.evaluated_date) {
+                              return [...acc.filter((x) => x.posting_id !== m.posting_id), m];
+                            }
+                            return acc;
+                          }, [])
+                          .sort((a, b) => b.match_score - a.match_score)
+                          .map((m) => (
+                            <div key={m.match_id} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
+                              <span className="text-muted-foreground">
+                                {OPEN_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id}
+                              </span>
+                              <span className="font-semibold text-foreground">{m.match_score}</span>
+                              <span className={
+                                m.classification === "Strong Match" ? "text-brand-green"
+                                  : m.classification === "Partial Match" ? "text-brand-gold"
+                                    : "text-muted-foreground"
+                              }>· {m.classification}</span>
+                            </div>
+                          ))}
+                      </div>
+                    ) : entry.match_evaluation_history.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {entry.match_evaluation_history.map((h, hi) => (
                           <div key={`${h.posting_id}-${hi}`} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
@@ -766,8 +845,10 @@ export default function TalentPoolPage() {
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No scores yet — click Re-score to evaluate against open jobs.</p>
+                    )}
+                  </div>
 
                   <div className="mt-3 pt-3 border-t border-border flex items-center justify-between gap-3">
                     {!hasStrongMatch && (
@@ -802,8 +883,12 @@ export default function TalentPoolPage() {
 
       {/* ── Section 2: Unmatched / Under Tracking ── */}
       {(() => {
+        // Only show referrals that are genuinely pending — exclude in_review (active pipeline),
+        // not_suitable (rejected), in_pool (talent pool), and hired.
         const pendingReferrals = submittedReferrals.filter(
-          (r) => !livePoolEntries.some((e) => e.referral_id === r.referral_id)
+          (r) =>
+            r.pipeline_status === "pending_review" &&
+            !livePoolEntries.some((e) => e.referral_id === r.referral_id)
         );
         if (untrackedCandidates.length === 0 && pendingReferrals.length === 0) return null;
         return (
@@ -970,10 +1055,8 @@ export default function TalentPoolPage() {
               );
             })}
 
-            {/* Submitted referrals pending review — exclude already-promoted ones */}
-            {submittedReferrals
-              .filter((r) => !livePoolEntries.some((e) => e.referral_id === r.referral_id))
-              .map((referral) => {
+            {/* Submitted referrals pending review — exclude promoted, rejected, in_review, in_pool, hired */}
+            {pendingReferrals.map((referral) => {
               const matches = liveMatches.filter((m) => m.referral_id === referral.referral_id);
               // Deduplicate: keep the latest match per posting_id (handles re-score runs)
               const latestByJob = matches.reduce<Record<string, LiveMatchRecord>>((acc, m) => {

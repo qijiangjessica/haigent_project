@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
 import { MATCH_RECORDS } from "@/data/reference/matches";
-import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle, Square, CheckSquare, Minus, Users, Filter, UserPlus } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, CheckCircle2, Clock, XCircle, Download, Settings, TrendingUp, Package, Loader2, AlertTriangle, Square, CheckSquare, Minus, Users, Filter, UserPlus, CalendarClock, X } from "lucide-react";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { AUDIT_LOG } from "@/data/reference/audit-log";
 import { REFERENCE_JOBS } from "@/data/reference/jobs";
@@ -28,7 +28,7 @@ interface SubmittedReferral {
   resume_filename: string | null;
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
-  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "hired";
+  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "in_scheduling" | "hired";
   in_review_at: string | null;
   skills_claimed: string[];
 }
@@ -89,6 +89,7 @@ const REASON_CODES = [
 ];
 
 const DEFAULT_WEIGHTS = { skill: 50, experience: 25, location: 15, seniority: 10 };
+const DEFAULT_THRESHOLDS = { strong_match: 70, partial_match: 50 };
 
 function computeScore(
   m: { skill_overlap_score: number; experience_score: number; location_score: number; seniority_score: number },
@@ -102,8 +103,11 @@ function computeScore(
   );
 }
 
-function classifyScore(score: number): "Strong Match" | "Partial Match" | "No Match" {
-  return score >= 70 ? "Strong Match" : score >= 50 ? "Partial Match" : "No Match";
+function classifyScore(
+  score: number,
+  t: { strong_match: number; partial_match: number } = DEFAULT_THRESHOLDS
+): "Strong Match" | "Partial Match" | "No Match" {
+  return score >= t.strong_match ? "Strong Match" : score >= t.partial_match ? "Partial Match" : "No Match";
 }
 
 function daysSince(dateStr: string): number {
@@ -152,10 +156,13 @@ export default function CandidatesPage() {
   const [promoteError, setPromoteError] = useState<string | null>(null);
   const [promoteRecruiterEmail, setPromoteRecruiterEmail] = useState("");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS);
   const [inReviewSet, setInReviewSet] = useState<Set<string>>(new Set());
+  const [inSchedulingSet, setInSchedulingSet] = useState<Set<string>>(new Set());
   const [movingToPipelineId, setMovingToPipelineId] = useState<string | null>(null);
   const [referralMatchedSet, setReferralMatchedSet] = useState<Set<string>>(new Set());
   const [applyingDecisionId, setApplyingDecisionId] = useState<string | null>(null);
+  const [activePanel, setActivePanel] = useState<"total" | "strong" | "pending" | "scheduling" | "hired" | null>(null);
 
   function toggleLiveScore(referralId: string) {
     setExpandedLiveScores((prev) => {
@@ -189,7 +196,7 @@ export default function CandidatesPage() {
   async function persistReferralDecision(referralId: string, decision: DecisionValue, reasonCode: string) {
     if (!decision) return;
     const afterPipelineStatus =
-      decision === "PROCEED" ? "in_pool"
+      decision === "PROCEED" ? "in_scheduling"
         : decision === "NOT_SUITABLE" ? "not_suitable"
           : null;
 
@@ -210,40 +217,14 @@ export default function CandidatesPage() {
           body: JSON.stringify({ pipeline_status: afterPipelineStatus }),
         });
         if (decision === "PROCEED") {
-          // Remove from Active Pipeline
+          // Remove from Active Pipeline, move to Scheduling
           setInReviewSet((prev) => { const n = new Set(prev); n.delete(referralId); return n; });
+          setInSchedulingSet((prev) => new Set([...prev, referralId]));
 
-          // Update local referral record so it doesn't drift back into Pending Review
+          // Update local referral record to reflect new stage
           setSubmittedReferrals((prev) =>
-            prev.map((r) => r.referral_id === referralId ? { ...r, pipeline_status: "in_pool" as const } : r)
+            prev.map((r) => r.referral_id === referralId ? { ...r, pipeline_status: "in_scheduling" as const } : r)
           );
-
-          // Auto-create a LivePoolEntry so the candidate is visible on the Talent Pool page
-          const referral = submittedReferrals.find((r) => r.referral_id === referralId);
-          if (referral) {
-            const yoe = referral.years_experience ?? 0;
-            const expLevel = yoe >= 10 ? "Lead" : yoe >= 6 ? "Senior" : yoe >= 3 ? "Mid" : "Junior";
-            const poolRes = await fetch("/api/reference/promote-to-pool", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                referral_id: referralId,
-                experience_level: expLevel,
-                skill_tags: referral.skills_claimed ?? [],
-                location_tags: referral.location ? [referral.location] : [],
-                preferred_role_tags: [],
-              }),
-            }).catch(() => null);
-            if (poolRes?.ok) {
-              const poolData = await poolRes.json().catch(() => null);
-              if (poolData?.pool_id) {
-                setPromotedMap((prev) => ({ ...prev, [referralId]: poolData.pool_id }));
-              }
-            } else {
-              // Already in pool (409) — still mark promoted so it doesn't show in pending
-              setPromotedMap((prev) => ({ ...prev, [referralId]: "pool" }));
-            }
-          }
         } else if (decision === "NOT_SUITABLE") {
           setInReviewSet((prev) => { const n = new Set(prev); n.delete(referralId); return n; });
           setRejectedSet((prev) => new Set([...prev, referralId]));
@@ -341,9 +322,9 @@ export default function CandidatesPage() {
 
     fetch("/api/reference/scoring-config")
       .then((r) => r.json())
-      .then((data: { weights: typeof DEFAULT_WEIGHTS }) => {
-        setWeights(data.weights);
-        setWeightsDraft(data.weights);
+      .then((data: { weights: typeof DEFAULT_WEIGHTS; thresholds?: typeof DEFAULT_THRESHOLDS }) => {
+        if (data.weights) { setWeights(data.weights); setWeightsDraft(data.weights); }
+        if (data.thresholds) setThresholds(data.thresholds);
       })
       .catch(() => {});
 
@@ -366,6 +347,13 @@ export default function CandidatesPage() {
             .map((r) => r.referral_id)
         );
         setInReviewSet(inReview);
+        // Restore in-scheduling state from persisted pipeline_status
+        const inScheduling = new Set(
+          referrals
+            .filter((r) => r.pipeline_status === "in_scheduling")
+            .map((r) => r.referral_id)
+        );
+        setInSchedulingSet(inScheduling);
       })
       .catch(() => {});
 
@@ -554,11 +542,11 @@ export default function CandidatesPage() {
       if (statusFilter !== "all" && c.pool_status !== statusFilter) return false;
       if (matchFilter !== "all") {
         const best = bestMatchByCandidate[c.candidate_id];
-        if (!best || classifyScore(computeScore(best, weights)) !== matchFilter) return false;
+        if (!best || classifyScore(computeScore(best, weights), thresholds) !== matchFilter) return false;
       }
       return true;
     });
-  }, [search, statusFilter, matchFilter, bestMatchByCandidate]);
+  }, [search, statusFilter, matchFilter, bestMatchByCandidate, thresholds]);
 
   // Referrals split by pipeline stage
   const inReviewReferrals = useMemo(
@@ -566,17 +554,27 @@ export default function CandidatesPage() {
     [submittedReferrals, inReviewSet]
   );
 
+  const schedulingReferrals = useMemo(
+    () =>
+      submittedReferrals.filter(
+        (r) => inSchedulingSet.has(r.referral_id) || r.pipeline_status === "in_scheduling"
+      ),
+    [submittedReferrals, inSchedulingSet]
+  );
+
   const pendingReferrals = useMemo(
     () =>
       submittedReferrals.filter(
         (r) =>
           !inReviewSet.has(r.referral_id) &&
+          !inSchedulingSet.has(r.referral_id) &&
           !rejectedSet.has(r.referral_id) &&
           !promotedMap[r.referral_id] &&
           r.pipeline_status !== "in_pool" &&
+          r.pipeline_status !== "in_scheduling" &&
           r.pipeline_status !== "hired"
       ),
-    [submittedReferrals, inReviewSet, rejectedSet, promotedMap]
+    [submittedReferrals, inReviewSet, inSchedulingSet, rejectedSet, promotedMap]
   );
 
   // Referral-specific status filters hide the seeded candidate section
@@ -601,11 +599,11 @@ export default function CandidatesPage() {
       if (matchFilter !== "all") {
         const refMatches = liveMatches.filter((m) => m.referral_id === r.referral_id);
         const best = refMatches.sort((a, b) => b.match_score - a.match_score)[0];
-        if (!best || best.classification !== matchFilter) return false;
+        if (!best || classifyScore(best.match_score, thresholds) !== matchFilter) return false;
       }
       return true;
     });
-  }, [inReviewReferrals, search, matchFilter, statusFilter, liveMatches, referralMatchedSet]);
+  }, [inReviewReferrals, search, matchFilter, statusFilter, liveMatches, referralMatchedSet, thresholds]);
 
   const filteredPendingReferrals = useMemo(() => {
     // Hide entire section when filtering to pipeline-specific statuses
@@ -624,15 +622,165 @@ export default function CandidatesPage() {
 
   // Pipeline stats
   const pipelineStats = useMemo(() => {
-    const strongMatches = inReviewReferrals.filter((r) => {
-      const best = liveMatches
-        .filter((m) => m.referral_id === r.referral_id)
-        .sort((a, b) => b.match_score - a.match_score)[0];
-      return best?.classification === "Strong Match";
-    }).length;
+    // Seeded candidates: unique candidates where best weight+threshold-adjusted score is Strong Match
+    const seededStrong = new Set(
+      MATCH_RECORDS
+        .filter((m) => classifyScore(computeScore(m, weights), thresholds) === "Strong Match")
+        .map((m) => m.candidate_id)
+    ).size;
+
+    // Live referrals: recompute classification from score using current thresholds
+    const liveStrong = new Set(
+      liveMatches
+        .filter((m) => classifyScore(m.match_score, thresholds) === "Strong Match")
+        .map((m) => m.referral_id)
+    ).size;
+
     const hired = submittedReferrals.filter((r) => r.pipeline_status === "hired").length;
-    return { strongMatches, hired };
-  }, [inReviewReferrals, liveMatches, submittedReferrals]);
+    return { strongMatches: seededStrong + liveStrong, hired };
+  }, [liveMatches, submittedReferrals, weights, thresholds]);
+
+  // Total in pipeline = all seeded candidates + all submitted referrals that are not rejected
+  const totalPipelineCount = useMemo(
+    () =>
+      REFERENCE_CANDIDATES.length +
+      submittedReferrals.filter((r) => r.pipeline_status !== "not_suitable").length,
+    [submittedReferrals]
+  );
+
+  // Panel-specific candidate lists for the clickable stat cards
+  const panelData = useMemo(() => {
+    // Strong match seeded candidates — use weight+threshold-adjusted scores
+    const strongSeededIds = new Set(
+      MATCH_RECORDS.filter((m) => classifyScore(computeScore(m, weights), thresholds) === "Strong Match").map((m) => m.candidate_id)
+    );
+    const strongSeeded = REFERENCE_CANDIDATES.filter((c) => strongSeededIds.has(c.candidate_id)).map((c) => {
+      const best = MATCH_RECORDS.filter((m) => m.candidate_id === c.candidate_id)
+        .sort((a, b) => computeScore(b, weights) - computeScore(a, weights))[0];
+      const score = best ? computeScore(best, weights) : null;
+      return {
+        id: c.candidate_id,
+        name: c.name,
+        employer: c.current_employer,
+        yearsExp: c.years_experience,
+        location: c.location,
+        score,
+        classification: score !== null ? classifyScore(score, thresholds) : null,
+        href: `/reference/candidates`,
+        type: "seeded" as const,
+      };
+    });
+    const strongLiveIds = new Set(
+      liveMatches.filter((m) => m.classification === "Strong Match").map((m) => m.referral_id)
+    );
+    const strongLive = submittedReferrals
+      .filter((r) => strongLiveIds.has(r.referral_id))
+      .map((r) => {
+        const best = liveMatches.filter((m) => m.referral_id === r.referral_id)
+          .sort((a, b) => b.match_score - a.match_score)[0];
+        return {
+          id: r.referral_id,
+          name: r.candidate_name,
+          employer: r.current_employer,
+          yearsExp: r.years_experience,
+          location: r.location,
+          score: best ? Math.round(best.match_score) : null,
+          classification: "Strong Match" as const,
+          href: `/reference/referrals/${r.referral_id}`,
+          type: "referral" as const,
+        };
+      });
+
+    // All (total) — seeded + active referrals
+    const allSeeded = REFERENCE_CANDIDATES.map((c) => {
+      const best = MATCH_RECORDS.filter((m) => m.candidate_id === c.candidate_id)
+        .sort((a, b) => computeScore(b, weights) - computeScore(a, weights))[0];
+      const score = best ? computeScore(best, weights) : null;
+      return {
+        id: c.candidate_id,
+        name: c.name,
+        employer: c.current_employer,
+        yearsExp: c.years_experience,
+        location: c.location,
+        score,
+        classification: score !== null ? classifyScore(score, thresholds) : null,
+        href: `/reference/candidates`,
+        type: "seeded" as const,
+      };
+    });
+    const allLive = submittedReferrals
+      .filter((r) => r.pipeline_status !== "not_suitable")
+      .map((r) => {
+        const best = liveMatches.filter((m) => m.referral_id === r.referral_id)
+          .sort((a, b) => b.match_score - a.match_score)[0];
+        const score = best ? Math.round(best.match_score) : null;
+        return {
+          id: r.referral_id,
+          name: r.candidate_name,
+          employer: r.current_employer,
+          yearsExp: r.years_experience,
+          location: r.location,
+          score,
+          classification: score !== null ? classifyScore(score, thresholds) : null,
+          href: `/reference/referrals/${r.referral_id}`,
+          type: "referral" as const,
+        };
+      });
+
+    // Pending — submitted referrals awaiting review
+    const pendingList = pendingReferrals.map((r) => ({
+      id: r.referral_id,
+      name: r.candidate_name,
+      employer: r.current_employer,
+      yearsExp: r.years_experience,
+      location: r.location,
+      score: null as number | null,
+      classification: null as "Strong Match" | "Partial Match" | "No Match" | null,
+      href: `/reference/referrals/${r.referral_id}`,
+      type: "referral" as const,
+    }));
+
+    // In Scheduling
+    const schedulingList = schedulingReferrals.map((r) => {
+      const best = liveMatches.filter((m) => m.referral_id === r.referral_id)
+        .sort((a, b) => b.match_score - a.match_score)[0];
+      const score = best ? Math.round(best.match_score) : null;
+      return {
+        id: r.referral_id,
+        name: r.candidate_name,
+        employer: r.current_employer,
+        yearsExp: r.years_experience,
+        location: r.location,
+        score,
+        classification: score !== null ? classifyScore(score, thresholds) : null,
+        href: `/reference/referrals/${r.referral_id}`,
+        type: "referral" as const,
+      };
+    });
+
+    // Hired
+    const hiredList = submittedReferrals
+      .filter((r) => r.pipeline_status === "hired")
+      .map((r) => ({
+        id: r.referral_id,
+        name: r.candidate_name,
+        employer: r.current_employer,
+        yearsExp: r.years_experience,
+        location: r.location,
+        score: null as number | null,
+        classification: null as "Strong Match" | "Partial Match" | "No Match" | null,
+        href: `/reference/referrals/${r.referral_id}`,
+        type: "referral" as const,
+      }));
+
+    return {
+      total: [...allSeeded, ...allLive],
+      strong: [...strongSeeded, ...strongLive],
+      pending: pendingList,
+      scheduling: schedulingList,
+      hired: hiredList,
+    };
+  }, [submittedReferrals, liveMatches, pendingReferrals, schedulingReferrals, weights, thresholds]);
 
   function toggleScore(id: string) {
     setExpandedScores((prev) => {
@@ -738,22 +886,76 @@ export default function CandidatesPage() {
 
       {/* ── Pipeline stats bar ── */}
       {submittedReferrals.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 -mt-2">
-          <div className="bg-white rounded-xl border border-border shadow-sm px-4 py-3 flex flex-col gap-0.5">
-            <span className="text-2xl font-bold text-foreground">{filtered.length + inReviewReferrals.length}</span>
-            <span className="text-xs text-muted-foreground">Total in Pipeline</span>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 -mt-2">
+          {([
+            { key: "total", label: "Total in Pipeline", value: totalPipelineCount, colorClass: "text-foreground", borderClass: "border-border" },
+            { key: "strong", label: "Strong Matches", value: pipelineStats.strongMatches, colorClass: "text-brand-green", borderClass: "border-brand-green/20" },
+            { key: "pending", label: "Pending Review", value: pendingReferrals.length, colorClass: "text-brand-cyan", borderClass: "border-brand-cyan/20" },
+            { key: "scheduling", label: "In Scheduling", value: schedulingReferrals.length, colorClass: "text-brand-teal", borderClass: "border-brand-teal/20" },
+            { key: "hired", label: "Hired", value: pipelineStats.hired, colorClass: "text-brand-gold", borderClass: "border-brand-gold/20" },
+          ] as const).map(({ key, label, value, colorClass, borderClass }) => (
+            <button
+              key={key}
+              onClick={() => setActivePanel((prev) => (prev === key ? null : key))}
+              className={`bg-white rounded-xl border ${borderClass} shadow-sm px-4 py-3 flex flex-col gap-0.5 text-left transition-all hover:shadow-md hover:scale-[1.02] active:scale-[0.99] ${activePanel === key ? "ring-2 ring-brand-teal/40" : ""}`}
+            >
+              <span className={`text-2xl font-bold ${colorClass}`}>{value}</span>
+              <span className="text-xs text-muted-foreground">{label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Slide-in panel for stat card details ── */}
+      {activePanel && (
+        <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+          {/* Panel header */}
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
+            <p className="text-sm font-semibold text-foreground">
+              {activePanel === "total" && `All Pipeline Candidates (${panelData.total.length})`}
+              {activePanel === "strong" && `Strong Matches (${panelData.strong.length})`}
+              {activePanel === "pending" && `Pending Review (${panelData.pending.length})`}
+              {activePanel === "scheduling" && `In Scheduling (${panelData.scheduling.length})`}
+              {activePanel === "hired" && `Hired (${panelData.hired.length})`}
+            </p>
+            <button
+              onClick={() => setActivePanel(null)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <div className="bg-white rounded-xl border border-brand-green/20 shadow-sm px-4 py-3 flex flex-col gap-0.5">
-            <span className="text-2xl font-bold text-brand-green">{pipelineStats.strongMatches}</span>
-            <span className="text-xs text-muted-foreground">Strong Matches</span>
-          </div>
-          <div className="bg-white rounded-xl border border-brand-cyan/20 shadow-sm px-4 py-3 flex flex-col gap-0.5">
-            <span className="text-2xl font-bold text-brand-cyan">{pendingReferrals.length}</span>
-            <span className="text-xs text-muted-foreground">Pending Review</span>
-          </div>
-          <div className="bg-white rounded-xl border border-brand-gold/20 shadow-sm px-4 py-3 flex flex-col gap-0.5">
-            <span className="text-2xl font-bold text-brand-gold">{pipelineStats.hired}</span>
-            <span className="text-xs text-muted-foreground">Hired</span>
+          {/* Panel list */}
+          <div className="divide-y divide-border max-h-72 overflow-y-auto">
+            {panelData[activePanel].length === 0 ? (
+              <p className="px-5 py-6 text-sm text-muted-foreground text-center">No candidates in this stage yet.</p>
+            ) : (
+              panelData[activePanel].map((c) => (
+                <Link
+                  key={c.id}
+                  href={c.href}
+                  className="flex items-center justify-between px-5 py-3 hover:bg-muted/40 transition-colors group"
+                  onClick={() => setActivePanel(null)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground group-hover:text-brand-teal transition-colors truncate">{c.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{c.employer} · {c.yearsExp}y exp · {c.location}</p>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                    {c.score !== null && (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        c.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                        : c.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                        : "bg-muted text-muted-foreground"
+                      }`}>
+                        {c.score}%
+                      </span>
+                    )}
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground -rotate-90 group-hover:text-brand-teal transition-colors" />
+                  </div>
+                </Link>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -1037,14 +1239,14 @@ export default function CandidatesPage() {
           const matches = MATCH_RECORDS.filter((m) => m.candidate_id === candidate.candidate_id);
           const bestMatch = bestMatchByCandidate[candidate.candidate_id];
           const candDays = ref ? daysSince(ref.submission_date) : 0;
-          const candMatched = matches.filter((m) => m.classification !== "No Match").length;
+          const candMatched = matches.filter((m) => classifyScore(computeScore(m, weights), thresholds) !== "No Match").length;
           const candContacted = contactSummary[candidate.reference_id] ?? 0;
           const candStale = candDays > 14 && candContacted === 0;
           const scoreExpanded = expandedScores.has(candidate.candidate_id);
           const dec = decisions[candidate.candidate_id] ?? { decision: null, reasonCode: "" };
           const effectiveStatus = statusOverridesMap[candidate.candidate_id] ?? candidate.pool_status;
           const bestRecomputed = bestMatch ? computeScore(bestMatch, weights) : candidate.candidate_score;
-          const bestRecomputedClass = bestMatch ? classifyScore(bestRecomputed) : null;
+          const bestRecomputedClass = bestMatch ? classifyScore(bestRecomputed, thresholds) : null;
           const isSelected = selectedIds.has(candidate.candidate_id);
 
           return (
@@ -1152,7 +1354,7 @@ export default function CandidatesPage() {
                   <div className="flex flex-wrap gap-2">
                     {matches.map((m) => {
                       const rc = computeScore(m, weights);
-                      const rClass = classifyScore(rc);
+                      const rClass = classifyScore(rc, thresholds);
                       return (
                         <div key={m.match_id} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
                           <span className="text-muted-foreground">
@@ -1174,7 +1376,7 @@ export default function CandidatesPage() {
                     <div className="mt-3 space-y-2">
                       {matches.map((m) => {
                         const rc = computeScore(m, weights);
-                        const rClass = classifyScore(rc);
+                        const rClass = classifyScore(rc, thresholds);
                         return (
                         <div key={m.match_id} className="bg-muted rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
@@ -1402,11 +1604,11 @@ export default function CandidatesPage() {
                           <span className="text-sm text-muted-foreground">/100</span>
                         </div>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          bestMatch.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
-                            : bestMatch.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                          classifyScore(bestMatch.match_score, thresholds) === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                            : classifyScore(bestMatch.match_score, thresholds) === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
                               : "bg-muted text-muted-foreground"
                         }`}>
-                          {bestMatch.classification}
+                          {classifyScore(bestMatch.match_score, thresholds)}
                         </span>
                       </div>
                     )}
@@ -1417,8 +1619,8 @@ export default function CandidatesPage() {
                     <div className="mt-3">
                       <p className="text-xs font-medium text-muted-foreground mb-1.5">Skills</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {referral.skills_claimed.map((skill) => (
-                          <span key={skill} className="text-xs px-2.5 py-1 rounded-md font-medium bg-muted text-muted-foreground">
+                        {referral.skills_claimed.map((skill, i) => (
+                          <span key={i} className="text-xs px-2.5 py-1 rounded-md font-medium bg-muted text-muted-foreground">
                             {skill}
                           </span>
                         ))}
@@ -1447,15 +1649,16 @@ export default function CandidatesPage() {
                       <div className="flex flex-wrap gap-2">
                         {sortedMatches.map((m) => {
                           const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
+                          const mClass = classifyScore(m.match_score, thresholds);
                           return (
                             <div key={m.match_id} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
                               <span className="text-muted-foreground">{jobTitle}</span>
                               <span className="font-semibold text-foreground">{m.match_score}</span>
                               <span className={
-                                m.classification === "Strong Match" ? "text-brand-green"
-                                  : m.classification === "Partial Match" ? "text-brand-gold"
+                                mClass === "Strong Match" ? "text-brand-green"
+                                  : mClass === "Partial Match" ? "text-brand-gold"
                                     : "text-muted-foreground"
-                              }>· {m.classification}</span>
+                              }>· {mClass}</span>
                             </div>
                           );
                         })}
@@ -1464,16 +1667,17 @@ export default function CandidatesPage() {
                         <div className="mt-3 space-y-2">
                           {sortedMatches.map((m) => {
                             const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
+                            const mClass = classifyScore(m.match_score, thresholds);
                             return (
                               <div key={m.match_id} className="bg-muted rounded-lg p-3">
                                 <div className="flex items-center justify-between mb-2">
                                   <p className="text-xs font-semibold text-foreground">{jobTitle}</p>
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                    m.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
-                                      : m.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                                    mClass === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                                      : mClass === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
                                         : "bg-muted text-muted-foreground"
                                   }`}>
-                                    {m.match_score} · {m.classification}
+                                    {m.match_score} · {mClass}
                                   </span>
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1554,7 +1758,7 @@ export default function CandidatesPage() {
                     )}
                     {dec.decision === "PROCEED" && (
                       <p className="mt-2 text-xs text-brand-teal">
-                        ✓ Moved to Talent Pool — candidate promoted to &ldquo;in_pool&rdquo;.
+                        ✓ Moved to Interview Scheduling — candidate forwarded to the scheduling queue.
                       </p>
                     )}
                     {dec.decision === "ON_HOLD" && (
@@ -1592,6 +1796,116 @@ export default function CandidatesPage() {
         </div>
       )}
 
+      {/* ── In Interview Scheduling ── */}
+      {schedulingReferrals.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarClock className="h-4 w-4 text-brand-teal" />
+            <h2 className="text-sm font-semibold text-foreground">Interview Scheduling</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-brand-teal/10 text-brand-teal font-medium">
+              {schedulingReferrals.length}
+            </span>
+            <span className="text-xs text-muted-foreground">· Approved and forwarded to scheduling</span>
+          </div>
+
+          <div className="grid gap-4">
+            {schedulingReferrals.map((referral) => {
+              const matches = liveMatches.filter((m) => m.referral_id === referral.referral_id);
+              const latestByJob = matches.reduce<Record<string, LiveMatchRecord>>((acc, m) => {
+                const existing = acc[m.posting_id];
+                if (!existing || m.evaluated_date >= existing.evaluated_date) acc[m.posting_id] = m;
+                return acc;
+              }, {});
+              const sortedMatches = Object.values(latestByJob).sort((a, b) => b.match_score - a.match_score);
+              const bestMatch = sortedMatches[0] ?? null;
+
+              return (
+                <div key={referral.referral_id} className="bg-white rounded-xl border border-brand-teal/30 shadow-sm p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link
+                          href={`/reference/referrals/${referral.referral_id}`}
+                          className="font-semibold text-foreground hover:text-brand-teal hover:underline"
+                        >
+                          {referral.candidate_name}
+                        </Link>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-brand-teal/10 text-brand-teal font-medium flex items-center gap-1">
+                          <CalendarClock className="h-3 w-3" />
+                          In Scheduling
+                        </span>
+                        {referral.availability && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-brand-cyan/10 text-brand-cyan font-medium">
+                            {referral.availability}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        {referral.current_employer} · {referral.years_experience}y exp · {referral.location}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {referral.candidate_email}{referral.candidate_phone ? ` · ${referral.candidate_phone}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Referred by {referral.referrer_name} · {new Date(referral.submitted_at).toLocaleDateString("en-CA")}
+                      </p>
+                    </div>
+                    {bestMatch && (
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <div className="text-right">
+                          <span className="text-2xl font-bold text-foreground">{bestMatch.match_score}</span>
+                          <span className="text-sm text-muted-foreground">/100</span>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          classifyScore(bestMatch.match_score, thresholds) === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                            : classifyScore(bestMatch.match_score, thresholds) === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                              : "bg-muted text-muted-foreground"
+                        }`}>
+                          {classifyScore(bestMatch.match_score, thresholds)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {referral.skills_claimed?.length > 0 && (
+                    <div className="mt-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {referral.skills_claimed.map((skill, i) => (
+                          <span key={i} className="text-xs px-2.5 py-1 rounded-md font-medium bg-muted text-muted-foreground">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3 pt-3 border-t border-border flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5 text-xs text-brand-teal">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Recruiter approved · forwarded to interview scheduling</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href="/schedule/candidates"
+                        className="text-xs text-brand-teal font-medium hover:underline"
+                      >
+                        View in Scheduling →
+                      </Link>
+                      <Link
+                        href={`/reference/referrals/${referral.referral_id}`}
+                        className="text-xs text-muted-foreground hover:underline"
+                      >
+                        Referral record →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Recently Submitted Referrals ── */}
       {filteredPendingReferrals.length > 0 && (
         <div>
@@ -1617,17 +1931,18 @@ export default function CandidatesPage() {
               }, {});
               const sortedMatches = Object.values(latestByJob).sort((a, b) => b.match_score - a.match_score);
               const refDays = daysSince(referral.submitted_at);
-              const refMatched = sortedMatches.filter((m) => m.classification !== "No Match").length;
+              const refMatched = sortedMatches.filter((m) => classifyScore(m.match_score, thresholds) !== "No Match").length;
               const refContacted = contactSummary[referral.referral_id] ?? 0;
               const refStale = refDays > 14 && refContacted === 0;
               const bestMatch = sortedMatches[0] ?? null;
+              const bestMatchClass = bestMatch ? classifyScore(bestMatch.match_score, thresholds) : null;
               const liveScoreExpanded = expandedLiveScores.has(referral.referral_id);
               const isPromoted = !!promotedMap[referral.referral_id];
               const isRejected = rejectedSet.has(referral.referral_id);
               const isMovingToPipeline = movingToPipelineId === referral.referral_id;
               const isPromoteFormOpen = activePromoteId === referral.referral_id;
-              const hasStrongMatch = bestMatch?.classification === "Strong Match";
-              const hasGoodMatch = bestMatch && bestMatch.classification !== "No Match";
+              const hasStrongMatch = bestMatchClass === "Strong Match";
+              const hasGoodMatch = bestMatch && bestMatchClass !== "No Match";
 
               const cardBorder = isPromoted
                 ? "border-brand-teal/30"
@@ -1700,10 +2015,10 @@ export default function CandidatesPage() {
                           <span className="text-sm text-muted-foreground">/100</span>
                         </div>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          bestMatch.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
-                            : bestMatch.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                          bestMatchClass === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                            : bestMatchClass === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
                               : "bg-muted text-muted-foreground"
-                        }`}>{bestMatch.classification}</span>
+                        }`}>{bestMatchClass}</span>
                       </div>
                     )}
                   </div>
@@ -1745,15 +2060,16 @@ export default function CandidatesPage() {
                       <div className="flex flex-wrap gap-2">
                         {sortedMatches.map((m) => {
                           const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
+                          const mClass = classifyScore(m.match_score, thresholds);
                           return (
                             <div key={m.match_id} className="flex items-center gap-1.5 text-xs bg-muted rounded-lg px-3 py-1.5">
                               <span className="text-muted-foreground">{jobTitle}</span>
                               <span className="font-semibold text-foreground">{m.match_score}</span>
                               <span className={
-                                m.classification === "Strong Match" ? "text-brand-green"
-                                  : m.classification === "Partial Match" ? "text-brand-gold"
+                                mClass === "Strong Match" ? "text-brand-green"
+                                  : mClass === "Partial Match" ? "text-brand-gold"
                                     : "text-muted-foreground"
-                              }>· {m.classification}</span>
+                              }>· {mClass}</span>
                             </div>
                           );
                         })}
@@ -1765,16 +2081,17 @@ export default function CandidatesPage() {
                       <div className="mt-3 space-y-2">
                         {sortedMatches.map((m) => {
                           const jobTitle = REFERENCE_JOBS.find((j) => j.id === m.posting_id)?.title ?? m.posting_id;
+                          const mClass = classifyScore(m.match_score, thresholds);
                           return (
                             <div key={m.match_id} className="bg-muted rounded-lg p-3">
                               <div className="flex items-center justify-between mb-2">
                                 <p className="text-xs font-semibold text-foreground">{jobTitle}</p>
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                  m.classification === "Strong Match" ? "bg-brand-green/10 text-brand-green"
-                                    : m.classification === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
+                                  mClass === "Strong Match" ? "bg-brand-green/10 text-brand-green"
+                                    : mClass === "Partial Match" ? "bg-brand-gold/10 text-brand-gold"
                                       : "bg-muted text-muted-foreground"
                                 }`}>
-                                  {m.match_score} · {m.classification}
+                                  {m.match_score} · {mClass}
                                 </span>
                               </div>
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

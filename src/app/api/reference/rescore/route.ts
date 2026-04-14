@@ -5,6 +5,7 @@ import {
   getLiveMatchRecords,
   getEffectiveWeights,
   type LiveMatchRecord,
+  classify,
 } from "@/lib/reference-store";
 import { addMatchesAndPersist } from "@/lib/reference-json-persistence";
 import { OPEN_JOBS, type ReferenceJob } from "@/data/reference/jobs";
@@ -80,7 +81,7 @@ function computeStaticMatchScores(
     );
 
     const classification: LiveMatchRecord["classification"] =
-      match_score >= 70 ? "Strong Match" : match_score >= 50 ? "Partial Match" : "No Match";
+      classify(match_score);
 
     return {
       match_id: `RESCORE-${referralId}-R${runIndex}-${i}`,
@@ -178,7 +179,7 @@ Respond ONLY with a valid JSON array, no other text:
         100
     );
     const classification: LiveMatchRecord["classification"] =
-      match_score >= 70 ? "Strong Match" : match_score >= 50 ? "Partial Match" : "No Match";
+      classify(match_score);
 
     return {
       match_id: `RESCORE-AI-${referralId}-R${runIndex}-${i}`,

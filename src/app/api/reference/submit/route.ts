@@ -4,7 +4,7 @@ import {
   getReferrals, getScoringWeights, getEffectiveWeights, type LiveMatchRecord,
   addReferral, addLiveMatchRecord, addLivePoolEntry,
   setDecision, rejectReferral, addLiveAuditEvent,
-  setStatusOverride, setScoringWeights, setJobWeightOverride,
+  setStatusOverride, setScoringWeights, setJobWeightOverride, classify,
 } from "@/lib/reference-store";
 import { addReferralAndPersist, addMatchesAndPersist, loadFromDisk } from "@/lib/reference-json-persistence";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
@@ -102,7 +102,7 @@ function computeStaticMatchScores(
     );
 
     const classification: LiveMatchRecord["classification"] =
-      match_score >= 70 ? "Strong Match" : match_score >= 50 ? "Partial Match" : "No Match";
+      classify(match_score);
 
     return {
       match_id: `STATIC-${referralId}-${i}`,
@@ -201,7 +201,7 @@ Respond ONLY with a valid JSON array, no other text:
         100
     );
     const classification: LiveMatchRecord["classification"] =
-      match_score >= 70 ? "Strong Match" : match_score >= 50 ? "Partial Match" : "No Match";
+      classify(match_score);
 
     return {
       match_id: `AI-${referralId}-${i}`,

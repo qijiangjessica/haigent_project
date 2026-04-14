@@ -6,10 +6,10 @@ const VALID_STATUSES: ContactEvent["status"][] = ["sent", "replied", "no_respons
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { contact_id: string } }
+  { params }: { params: Promise<{ contact_id: string }> }
 ) {
   try {
-    const { contact_id } = params;
+    const { contact_id } = await params;
     const body = await request.json() as { status?: string };
 
     if (!body.status || !VALID_STATUSES.includes(body.status as ContactEvent["status"])) {

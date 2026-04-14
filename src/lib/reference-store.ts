@@ -28,6 +28,37 @@ export function setScoringWeights(weights: ScoringWeights): void {
   scoringWeights = { ...weights };
 }
 
+// ── Classification thresholds ─────────────────────────────────────
+// Controls the score boundaries that separate Strong / Partial / No Match.
+
+export interface ThresholdConfig {
+  strong_match: number;  // default 70 — score >= this → "Strong Match"
+  partial_match: number; // default 50 — score >= this → "Partial Match"
+}
+
+export const DEFAULT_THRESHOLDS: ThresholdConfig = {
+  strong_match: 70,
+  partial_match: 50,
+};
+
+let thresholds: ThresholdConfig = { ...DEFAULT_THRESHOLDS };
+
+export function getThresholds(): ThresholdConfig {
+  return { ...thresholds };
+}
+
+export function setThresholds(cfg: ThresholdConfig): void {
+  thresholds = { ...cfg };
+}
+
+/** Classify a score using the current (possibly overridden) thresholds. */
+export function classify(score: number): "Strong Match" | "Partial Match" | "No Match" {
+  const t = getThresholds();
+  return score >= t.strong_match ? "Strong Match"
+    : score >= t.partial_match  ? "Partial Match"
+    : "No Match";
+}
+
 // ── Per-job scoring weight overrides ──────────────────────────────
 // When set, a job's override takes precedence over the global weights
 // for scoring and re-scoring against that specific posting.
@@ -84,7 +115,7 @@ export interface SubmittedReferral {
   is_duplicate: boolean;
   duplicate_candidate_id: string | null;
   skills_claimed: string[];
-  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "hired";
+  pipeline_status: "pending_review" | "in_review" | "not_suitable" | "in_pool" | "in_scheduling" | "hired";
   in_review_at: string | null;   // ISO timestamp when recruiter moved to active pipeline
   hired_at: string | null;       // ISO timestamp when marked hired
 }
