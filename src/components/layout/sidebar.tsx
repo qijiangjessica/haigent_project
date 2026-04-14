@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Lock, Settings, ChevronLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { AI_MODULES } from "@/lib/modules";
 import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
 
 interface SidebarProps {
   open: boolean;
