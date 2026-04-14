@@ -13,7 +13,9 @@ import {
 import {
   hydrateStoreFromDisk, addPoolEntryAndPersist,
   addAuditEventAndPersist, updateReferralAndPersist,
+  setDecisionAndPersist, addContactAndPersist, getContactsByReferralId,
 } from "@/lib/reference-json-persistence";
+import { getDecisions } from "@/lib/reference-store";
 import { appUrl } from "@/lib/email";
 
 const anthropic = new Anthropic({
@@ -229,6 +231,81 @@ const tools: Anthropic.Tool[] = [
           description: "Only return matches with match_score >= this value (0–100)",
         },
       },
+    },
+  },
+  {
+    name: "make_decision",
+    description:
+      "Record a recruiter decision on a submitted referral. Use this when the recruiter says they want to proceed, put on hold, or mark as not suitable. Decisions are persisted and notify the referrer by email. Valid decisions: PROCEED (move forward with the candidate), ON_HOLD (keep for future consideration), NOT_SUITABLE (decline the candidate).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        referral_id: {
+          type: "string",
+          description: "The referral ID to make a decision on (e.g. REF-2024-abc123). Use get_referrals first to look it up by name if needed.",
+        },
+        decision: {
+          type: "string",
+          enum: ["PROCEED", "ON_HOLD", "NOT_SUITABLE"],
+          description: "The recruiter's decision: PROCEED = move forward, ON_HOLD = keep for later, NOT_SUITABLE = decline",
+        },
+        reason_code: {
+          type: "string",
+          description: "Short reason code or note explaining the decision (e.g. 'skills_gap', 'strong_fit', 'role_filled'). Optional but recommended.",
+        },
+      },
+      required: ["referral_id", "decision"],
+    },
+  },
+  {
+    name: "log_contact_event",
+    description:
+      "Log a contact event recording that a recruiter reached out to a candidate. Use this when the recruiter says they contacted, emailed, called, or messaged a candidate. Persists the event and notifies the referrer that their candidate was contacted.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        referral_id: {
+          type: "string",
+          description: "The referral ID of the candidate who was contacted (e.g. REF-2024-abc123). Use get_referrals to find it by name if needed.",
+        },
+        posting_id: {
+          type: "string",
+          description: "The job posting ID this contact is related to (e.g. ROL-abc123). Use get_referrals to find the target_job_id.",
+        },
+        contact_method: {
+          type: "string",
+          enum: ["email", "phone", "linkedin", "other"],
+          description: "How the recruiter contacted the candidate",
+        },
+        contacted_by: {
+          type: "string",
+          description: "Name or identifier of the recruiter who made contact",
+        },
+        notes: {
+          type: "string",
+          description: "Optional notes about the contact — e.g. what was discussed, candidate's response",
+        },
+      },
+      required: ["referral_id", "posting_id", "contact_method", "contacted_by"],
+    },
+  },
+  {
+    name: "get_contact_history",
+    description:
+      "Retrieve the contact history for a specific referral — all past outreach events logged by recruiters. Optionally filter to show only candidates who have NOT been contacted in the last N days (useful for follow-up prioritisation).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        referral_id: {
+          type: "string",
+          description: "The referral ID to retrieve contact history for. Required.",
+        },
+        no_contact_days: {
+          type: "number",
+          description: "If provided, only return results if the last contact was more than this many days ago (or there has been no contact at all). Useful for identifying candidates who need a follow-up.",
+        },
+      },
+      required: ["referral_id"],
     },
   },
 ];
@@ -620,6 +697,190 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
     }
   }
 
+  // ── make_decision — record a recruiter decision on a referral ─────────────
+  if (name === "make_decision") {
+    const referral_id  = String(input.referral_id ?? "");
+    const decision     = String(input.decision ?? "") as "PROCEED" | "ON_HOLD" | "NOT_SUITABLE";
+    const reason_code  = input.reason_code ? String(input.reason_code) : "";
+
+    if (!referral_id) return "Error: referral_id is required.";
+    if (!["PROCEED", "ON_HOLD", "NOT_SUITABLE"].includes(decision)) {
+      return "Error: decision must be PROCEED, ON_HOLD, or NOT_SUITABLE.";
+    }
+
+    const referral = getReferrals().find((r) => r.referral_id === referral_id);
+    if (!referral) {
+      return `Error: Referral ${referral_id} not found. Use get_referrals to look up the correct ID.`;
+    }
+
+    setDecisionAndPersist({
+      candidate_id: referral_id,
+      decision,
+      reason_code,
+      decided_at: new Date().toISOString(),
+    });
+
+    addAuditEventAndPersist({
+      event_id:     `EVT-AGENT-DEC-${Date.now()}`,
+      timestamp:    new Date().toISOString(),
+      actor:        "Agent",
+      actor_id:     "agent",
+      event_type:   "RecruiterDecision",
+      entity_type:  "referral",
+      entity_id:    referral_id,
+      before_state: referral.pipeline_status ?? "pending_review",
+      after_state:  decision,
+      notes:        reason_code ? `Decision: ${decision} · Reason: ${reason_code}` : `Decision: ${decision}`,
+    });
+
+    return JSON.stringify({
+      success:        true,
+      referral_id,
+      candidate_name: referral.candidate_name,
+      decision,
+      reason_code:    reason_code || null,
+      decided_at:     new Date().toISOString(),
+      message: `Decision recorded: ${decision} for ${referral.candidate_name}${reason_code ? ` (reason: ${reason_code})` : ""}. Referrer will be notified by email.`,
+    }, null, 2);
+  }
+
+  // ── log_contact_event — record that a recruiter contacted a candidate ──────
+  if (name === "log_contact_event") {
+    const referral_id    = String(input.referral_id ?? "");
+    const posting_id     = String(input.posting_id ?? "");
+    const contact_method = String(input.contact_method ?? "") as "email" | "phone" | "linkedin" | "other";
+    const contacted_by   = String(input.contacted_by ?? "");
+    const notes          = input.notes ? String(input.notes) : null;
+
+    if (!referral_id)  return "Error: referral_id is required.";
+    if (!posting_id)   return "Error: posting_id is required.";
+    if (!contacted_by) return "Error: contacted_by is required.";
+    if (!["email", "phone", "linkedin", "other"].includes(contact_method)) {
+      return "Error: contact_method must be one of: email, phone, linkedin, other.";
+    }
+
+    const referral = getReferrals().find((r) => r.referral_id === referral_id);
+    if (!referral) {
+      return `Error: Referral ${referral_id} not found. Use get_referrals to look up the correct ID.`;
+    }
+
+    const tag          = referral_id.slice(-4).toUpperCase();
+    const contact_id   = `CONTACT-${Date.now()}-${tag}`;
+    const contacted_at = new Date().toISOString();
+
+    addContactAndPersist({
+      contact_id,
+      referral_id,
+      posting_id,
+      contacted_at,
+      contact_method,
+      contacted_by,
+      notes,
+      status: "sent",
+    });
+
+    addAuditEventAndPersist({
+      event_id:     `EVT-AGENT-CONTACT-${Date.now()}`,
+      timestamp:    contacted_at,
+      actor:        contacted_by,
+      actor_id:     contacted_by,
+      event_type:   "CandidateContacted",
+      entity_type:  "referral",
+      entity_id:    referral_id,
+      before_state: "pending_contact",
+      after_state:  "contacted",
+      notes:        `Contacted via ${contact_method}${notes ? ` · Notes: ${notes}` : ""}`,
+    });
+
+    const job = OPEN_JOBS.find((j) => j.id === posting_id);
+
+    return JSON.stringify({
+      success:        true,
+      contact_id,
+      referral_id,
+      candidate_name: referral.candidate_name,
+      job_title:      job?.title ?? posting_id,
+      contact_method,
+      contacted_by,
+      contacted_at,
+      notes,
+      message: `Contact event logged: ${contacted_by} reached out to ${referral.candidate_name} via ${contact_method} for ${job?.title ?? posting_id}. Referrer notified by email.`,
+    }, null, 2);
+  }
+
+  // ── get_contact_history — retrieve all contact events for a referral ───────
+  if (name === "get_contact_history") {
+    const referral_id     = String(input.referral_id ?? "");
+    const no_contact_days = typeof input.no_contact_days === "number" ? input.no_contact_days : null;
+
+    if (!referral_id) return "Error: referral_id is required.";
+
+    const referral = getReferrals().find((r) => r.referral_id === referral_id);
+    if (!referral) {
+      return `Error: Referral ${referral_id} not found. Use get_referrals to look up the correct ID.`;
+    }
+
+    const contacts = getContactsByReferralId(referral_id);
+
+    if (no_contact_days !== null) {
+      const cutoff      = Date.now() - no_contact_days * 86_400_000;
+      const lastContact = contacts.length > 0
+        ? Math.max(...contacts.map((c) => new Date(c.contacted_at).getTime()))
+        : 0;
+
+      if (contacts.length > 0 && lastContact >= cutoff) {
+        const daysSince = Math.floor((Date.now() - lastContact) / 86_400_000);
+        return JSON.stringify({
+          referral_id,
+          candidate_name:   referral.candidate_name,
+          total_contacts:   contacts.length,
+          days_since_last:  daysSince,
+          follow_up_needed: false,
+          message: `${referral.candidate_name} was last contacted ${daysSince} day(s) ago — within the ${no_contact_days}-day threshold. No follow-up needed yet.`,
+          contacts,
+        }, null, 2);
+      }
+
+      const daysSince = contacts.length > 0
+        ? Math.floor((Date.now() - Math.max(...contacts.map((c) => new Date(c.contacted_at).getTime()))) / 86_400_000)
+        : null;
+
+      return JSON.stringify({
+        referral_id,
+        candidate_name:   referral.candidate_name,
+        total_contacts:   contacts.length,
+        days_since_last:  daysSince,
+        follow_up_needed: true,
+        message: contacts.length === 0
+          ? `${referral.candidate_name} has never been contacted. Follow-up recommended.`
+          : `${referral.candidate_name} was last contacted ${daysSince} day(s) ago — exceeds the ${no_contact_days}-day threshold. Follow-up recommended.`,
+        contacts,
+      }, null, 2);
+    }
+
+    if (contacts.length === 0) {
+      return JSON.stringify({
+        referral_id,
+        candidate_name: referral.candidate_name,
+        total_contacts: 0,
+        message: `No contact events recorded for ${referral.candidate_name} yet.`,
+        contacts: [],
+      }, null, 2);
+    }
+
+    const enriched = contacts.map((c) => {
+      const job = OPEN_JOBS.find((j) => j.id === c.posting_id);
+      return { ...c, job_title: job?.title ?? c.posting_id };
+    });
+
+    return JSON.stringify({
+      referral_id,
+      candidate_name: referral.candidate_name,
+      total_contacts:  contacts.length,
+      contacts:        enriched,
+    }, null, 2);
+  }
+
   return `Unknown tool: ${name}`;
 }
 
@@ -662,7 +923,15 @@ Tool selection guide:
 - "Re-score Alice's referral" → get_referrals to confirm the ID, then rescore_referral
 - "Re-evaluate John with updated skills [Python, SQL]" → rescore_referral with skills override
 
-Action tools (promote_to_pool, rescore_referral) make real changes to the system. Always confirm the referral_id by calling get_referrals first if the user gave a name rather than an ID. Before promoting, check get_live_pool to ensure the candidate isn't already in the pool.
+Action tools (promote_to_pool, rescore_referral, make_decision, log_contact_event) make real changes to the system. Always confirm the referral_id by calling get_referrals first if the user gave a name rather than an ID. Before promoting, check get_live_pool to ensure the candidate isn't already in the pool.
+
+Decision & contact workflow:
+- "Proceed with Alice" → get_referrals to confirm ID, then make_decision(PROCEED)
+- "Put John on hold — skills gap" → make_decision(ON_HOLD, reason_code="skills_gap")
+- "Mark as not suitable" → make_decision(NOT_SUITABLE)
+- "I called Alice today about the Data Engineer role" → log_contact_event(contact_method="phone")
+- "Show contact history for REF-2024-abc" → get_contact_history(referral_id)
+- "Who hasn't been contacted in 7 days?" → get_referrals to list candidates, then get_contact_history with no_contact_days=7 for each
 
 Match scoring formula: (skill_overlap × 0.50) + (experience × 0.25) + (location × 0.15) + (seniority × 0.10)
 Classifications: ≥70 = Strong Match | 50–69 = Partial Match | <50 = No Match
