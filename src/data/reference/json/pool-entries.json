@@ -1,0 +1,160 @@
+[
+  {
+    "pool_id": "LPOOL-U3ZOP",
+    "referral_id": "REF-20260407-27PK",
+    "candidate_name": "Alex Nuegoe",
+    "candidate_email": "alex.nuego@gmail.com",
+    "years_experience": 6,
+    "location": "Toronto, Canada",
+    "availability": "1 month",
+    "date_added": "2026-04-07",
+    "date_last_evaluated": "2026-04-07",
+    "status": "Active Hold",
+    "skill_tags": [
+      "Python",
+      "SQL"
+    ],
+    "experience_level": "Mid",
+    "location_tags": [
+      "Toronto",
+      "Canada"
+    ],
+    "preferred_role_tags": [],
+    "match_evaluation_history": [
+      {
+        "posting_id": "ROL-PeY7KEhPOZ",
+        "score": 54,
+        "evaluated_date": "2026-04-07"
+      },
+      {
+        "posting_id": "ROL-N_TspQJnOE",
+        "score": 35,
+        "evaluated_date": "2026-04-07"
+      }
+    ],
+    "promoted_at": "2026-04-07T20:48:06.858Z",
+    "promoted_by": "Recruiter"
+  },
+  {
+    "pool_id": "LPOOL-X55YI",
+    "referral_id": "REF-20260406-QJTL",
+    "candidate_name": "Alex Nue",
+    "candidate_email": "alex.jane@gmail.com",
+    "years_experience": 4,
+    "location": "Vancouver",
+    "availability": "2 weeks",
+    "date_added": "2026-04-07",
+    "date_last_evaluated": "2026-04-07",
+    "status": "Active Hold",
+    "skill_tags": [],
+    "experience_level": "Mid",
+    "location_tags": [
+      "Vancouver"
+    ],
+    "preferred_role_tags": [],
+    "match_evaluation_history": [
+      {
+        "posting_id": "ROL-PeY7KEhPOZ",
+        "score": 60,
+        "evaluated_date": "2026-04-06"
+      },
+      {
+        "posting_id": "ROL-N_TspQJnOE",
+        "score": 19,
+        "evaluated_date": "2026-04-06"
+      }
+    ],
+    "promoted_at": "2026-04-07T20:56:28.970Z",
+    "promoted_by": "Recruiter"
+  },
+  {
+    "pool_id": "LPOOL-XGMWV",
+    "referral_id": "REF-20260408-U4JK",
+    "candidate_name": "Alex Janes",
+    "candidate_email": "alex.jane@gmails.com",
+    "years_experience": 3,
+    "location": "Toronto, Canada",
+    "availability": "1 month",
+    "date_added": "2026-04-08",
+    "date_last_evaluated": "2026-04-08",
+    "status": "Active Hold",
+    "skill_tags": [
+      "Python",
+      "SQL"
+    ],
+    "experience_level": "Junior",
+    "location_tags": [
+      "Toronto",
+      "Canada"
+    ],
+    "preferred_role_tags": [
+      "Data Engineer"
+    ],
+    "match_evaluation_history": [
+      {
+        "posting_id": "ROL-PeY7KEhPOZ",
+        "score": 44,
+        "evaluated_date": "2026-04-08"
+      },
+      {
+        "posting_id": "ROL-N_TspQJnOE",
+        "score": 27,
+        "evaluated_date": "2026-04-08"
+      }
+    ],
+    "promoted_at": "2026-04-08T16:06:26.392Z",
+    "promoted_by": "Recruiter"
+  },
+  {
+    "pool_id": "LPOOL-U72EP",
+    "referral_id": "REF-20260408-53LN",
+    "candidate_name": "Alex Jane",
+    "candidate_email": "alex.jane@gmail.com",
+    "years_experience": 6,
+    "location": "Vancouver",
+    "availability": "3 months",
+    "date_added": "2026-04-08",
+    "date_last_evaluated": "2026-04-08",
+    "status": "Active Hold",
+    "skill_tags": [],
+    "experience_level": "Mid",
+    "location_tags": [
+      "Vancouver"
+    ],
+    "preferred_role_tags": [],
+    "match_evaluation_history": [
+      {
+        "posting_id": "ROL-PeY7KEhPOZ",
+        "score": 38,
+        "evaluated_date": "2026-04-08"
+      },
+      {
+        "posting_id": "ROL-N_TspQJnOE",
+        "score": 21,
+        "evaluated_date": "2026-04-08"
+      },
+      {
+        "posting_id": "ROL-PeY7KEhPOZ",
+        "score": 68,
+        "evaluated_date": "2026-04-08"
+      },
+      {
+        "posting_id": "ROL-N_TspQJnOE",
+        "score": 46,
+        "evaluated_date": "2026-04-08"
+      },
+      {
+        "posting_id": "ROL-PeY7KEhPOZ",
+        "score": 80,
+        "evaluated_date": "2026-04-08"
+      },
+      {
+        "posting_id": "ROL-N_TspQJnOE",
+        "score": 46,
+        "evaluated_date": "2026-04-08"
+      }
+    ],
+    "promoted_at": "2026-04-08T16:58:02.513Z",
+    "promoted_by": "Recruiter"
+  }
+]
