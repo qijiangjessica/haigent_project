@@ -1,7 +1,19 @@
-import { ComingSoon } from "@/components/shared/coming-soon";
-import { AI_MODULES } from "@/lib/modules";
+import { AgentChat } from "@/components/payroll/agent-chat";
+import { HeroBanner } from "@/components/shared/hero-banner";
 
 export default function PayrollPage() {
-  const module = AI_MODULES.find((m) => m.slug === "payroll")!;
-  return <ComingSoon module={module} />;
+  return (
+    <div className="space-y-6">
+      <HeroBanner
+        title="Payroll"
+        subtitle="AI-powered payroll assistant connected to Salesforce Agentforce"
+        bgColor="bg-gradient-to-r from-brand-cyan to-brand-cyan/80"
+        badgeColor="bg-brand-charcoal/80"
+        badgeText="AI-Powered"
+      />
+
+      {/* Chat */}
+      <AgentChat />
+    </div>
+  );
 }
