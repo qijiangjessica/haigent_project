@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+// [ANTHROPIC - PLACEHOLDER] import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import {
   getReferrals,
   getLiveMatchRecords,
@@ -116,7 +117,8 @@ async function computeAIMatchScores(
 ): Promise<LiveMatchRecord[]> {
   if (jobs.length === 0) return [];
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // [ANTHROPIC - PLACEHOLDER] const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const today = new Date().toISOString().slice(0, 10);
 
   const jobsText = jobs
@@ -147,19 +149,27 @@ For each job return scores 0–100:
 Respond ONLY with a valid JSON array, no other text:
 [{"posting_id":"...","skill_overlap_score":85,"experience_score":90,"location_score":100,"seniority_score":75}]`;
 
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+  // [ANTHROPIC - PLACEHOLDER]
+  // const response = await anthropic.messages.create({
+  //   model: "claude-haiku-4-5-20251001",
+  //   max_tokens: 512,
+  //   messages: [{ role: "user", content: prompt }],
+  // });
+  // const text = response.content
+  //   .filter((c): c is Anthropic.TextBlock => c.type === "text")
+  //   .map((c) => c.text)
+  //   .join("");
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
     max_tokens: 512,
     messages: [{ role: "user", content: prompt }],
   });
 
-  const text = response.content
-    .filter((c): c is Anthropic.TextBlock => c.type === "text")
-    .map((c) => c.text)
-    .join("");
+  const text = response.choices[0].message.content ?? "";
 
   const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error("No JSON array in Claude response");
+  if (!jsonMatch) throw new Error("No JSON array in OpenAI response");
 
   const scores = JSON.parse(jsonMatch[0]) as Array<{
     posting_id: string;
@@ -242,7 +252,8 @@ export async function POST(request: NextRequest) {
     let matchResults: LiveMatchRecord[] = [];
     let scoringMethod: "ai" | "static" = "static";
 
-    if (process.env.ANTHROPIC_API_KEY) {
+    // [ANTHROPIC - PLACEHOLDER] if (process.env.ANTHROPIC_API_KEY) {
+    if (process.env.OPENAI_API_KEY) {
       try {
         matchResults = await computeAIMatchScores(candidateInput, OPEN_JOBS, referral.referral_id, runIndex);
         scoringMethod = "ai";

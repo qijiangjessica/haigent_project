@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+// [ANTHROPIC - PLACEHOLDER] import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { REFERENCE_CANDIDATES } from "@/data/reference/candidates";
 import { REFERENCES } from "@/data/reference/references";
 import { MATCH_RECORDS } from "@/data/reference/matches";
@@ -18,294 +19,282 @@ import {
 import { getDecisions } from "@/lib/reference-store";
 import { appUrl } from "@/lib/email";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// [ANTHROPIC - PLACEHOLDER]
+// const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const tools: Anthropic.Tool[] = [
+const tools: OpenAI.Chat.ChatCompletionTool[] = [
   {
-    name: "get_candidates",
-    description:
-      "Get all referred candidates with their skill verification status, scores, and current pool status. Optionally filter by name, status, or minimum score.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        name: {
-          type: "string",
-          description: "Filter by candidate name (partial match)",
-        },
-        status: {
-          type: "string",
-          enum: ["pending_validation", "verification_in_progress", "matched", "in_pool", "hired", "closed"],
-          description: "Filter by pool status",
-        },
-        min_score: {
-          type: "number",
-          description: "Only return candidates with score >= this value",
+    type: "function",
+    function: {
+      name: "get_candidates",
+      description:
+        "Get all referred candidates with their skill verification status, scores, and current pool status. Optionally filter by name, status, or minimum score.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Filter by candidate name (partial match)" },
+          status: {
+            type: "string",
+            enum: ["pending_validation", "verification_in_progress", "matched", "in_pool", "hired", "closed"],
+            description: "Filter by pool status",
+          },
+          min_score: { type: "number", description: "Only return candidates with score >= this value" },
         },
       },
     },
   },
   {
-    name: "get_matches",
-    description:
-      "Get match records showing how candidates scored against open job postings. Returns match score, classification (Strong/Partial/No Match), and outcome.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        candidate_id: {
-          type: "string",
-          description: "Filter by candidate ID (e.g. CAND-001)",
-        },
-        posting_id: {
-          type: "string",
-          description: "Filter by job posting ID",
-        },
-        classification: {
-          type: "string",
-          enum: ["Strong Match", "Partial Match", "No Match"],
-          description: "Filter by match classification",
+    type: "function",
+    function: {
+      name: "get_matches",
+      description:
+        "Get match records showing how candidates scored against open job postings. Returns match score, classification (Strong/Partial/No Match), and outcome.",
+      parameters: {
+        type: "object",
+        properties: {
+          candidate_id: { type: "string", description: "Filter by candidate ID (e.g. CAND-001)" },
+          posting_id: { type: "string", description: "Filter by job posting ID" },
+          classification: {
+            type: "string",
+            enum: ["Strong Match", "Partial Match", "No Match"],
+            description: "Filter by match classification",
+          },
         },
       },
     },
   },
   {
-    name: "get_talent_pool",
-    description:
-      "Get all candidates currently in the talent pool with their hold status, skill tags, preferred roles, and match evaluation history.",
-    input_schema: {
-      type: "object" as const,
-      properties: {},
+    type: "function",
+    function: {
+      name: "get_talent_pool",
+      description:
+        "Get all candidates currently in the talent pool with their hold status, skill tags, preferred roles, and match evaluation history.",
+      parameters: { type: "object", properties: {} },
     },
   },
   {
-    name: "get_audit_trail",
-    description:
-      "Get the full audit trail for a specific candidate or reference showing every status change, verification step, match event, and recruiter decision.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        entity_id: {
-          type: "string",
-          description: "Candidate ID (CAND-xxx), Reference ID (REF-xxxx-xxx), or leave empty for all events",
+    type: "function",
+    function: {
+      name: "get_audit_trail",
+      description:
+        "Get the full audit trail for a specific candidate or reference showing every status change, verification step, match event, and recruiter decision.",
+      parameters: {
+        type: "object",
+        properties: {
+          entity_id: {
+            type: "string",
+            description: "Candidate ID (CAND-xxx), Reference ID (REF-xxxx-xxx), or leave empty for all events",
+          },
         },
       },
     },
   },
   {
-    name: "get_referrals",
-    description:
-      "Query submitted referrals from the live system. Returns referral details including candidate info, referrer, target job, pipeline status, skills claimed, match scores, and timeline fields (submitted_at, in_review_at, hired_at). Use this when asked about any submitted referral, a specific person's referral, referrals for a job, or referrals in a particular pipeline stage.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        name: {
-          type: "string",
-          description: "Partial match on candidate name or referrer name",
-        },
-        pipeline_status: {
-          type: "string",
-          enum: ["pending_review", "in_review", "not_suitable", "in_pool", "hired"],
-          description: "Filter by current pipeline stage",
-        },
-        job_id: {
-          type: "string",
-          description: "Filter by target job ID (e.g. ROL-abc123)",
-        },
-        date_from: {
-          type: "string",
-          description: "Only return referrals submitted on or after this date (YYYY-MM-DD)",
-        },
-        date_to: {
-          type: "string",
-          description: "Only return referrals submitted on or before this date (YYYY-MM-DD)",
-        },
-        referral_id: {
-          type: "string",
-          description: "Look up a specific referral by its ID",
+    type: "function",
+    function: {
+      name: "get_referrals",
+      description:
+        "Query submitted referrals from the live system. Returns referral details including candidate info, referrer, target job, pipeline status, skills claimed, match scores, and timeline fields (submitted_at, in_review_at, hired_at). Use this when asked about any submitted referral, a specific person's referral, referrals for a job, or referrals in a particular pipeline stage.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Partial match on candidate name or referrer name" },
+          pipeline_status: {
+            type: "string",
+            enum: ["pending_review", "in_review", "not_suitable", "in_pool", "hired"],
+            description: "Filter by current pipeline stage",
+          },
+          job_id: { type: "string", description: "Filter by target job ID (e.g. ROL-abc123)" },
+          date_from: { type: "string", description: "Only return referrals submitted on or after this date (YYYY-MM-DD)" },
+          date_to: { type: "string", description: "Only return referrals submitted on or before this date (YYYY-MM-DD)" },
+          referral_id: { type: "string", description: "Look up a specific referral by its ID" },
         },
       },
     },
   },
   {
-    name: "get_live_pool",
-    description:
-      "Get candidates currently in the live talent pool — these are submitted referrals that a recruiter has promoted. Returns pool entry details including candidate info, skill tags, experience level, preferred roles, pool status, and their match evaluation history. Use this when asked about the talent pool, pooled candidates, or candidates on hold.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        status: {
-          type: "string",
-          enum: ["Active Hold", "Aging Review", "Withdrawn", "Placed"],
-          description: "Filter pool entries by hold status",
-        },
-        experience_level: {
-          type: "string",
-          enum: ["Junior", "Mid", "Senior", "Lead"],
-          description: "Filter by candidate experience level",
-        },
-      },
-    },
-  },
-  {
-    name: "promote_to_pool",
-    description:
-      "Promote a submitted referral to the live talent pool. Use this when a recruiter says they want to move a candidate to the pool, add someone to the talent pool, or hold a referral for future roles. Requires the referral_id and experience level. Automatically writes an audit event, updates the referral pipeline_status to in_pool, and fires email notifications. Returns the new pool_id on success.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        referral_id: {
-          type: "string",
-          description: "The referral ID to promote (e.g. REF-2024-abc123). Use get_referrals first if you need to find it.",
-        },
-        experience_level: {
-          type: "string",
-          enum: ["Junior", "Mid", "Senior", "Lead"],
-          description: "Seniority classification for this candidate in the pool",
-        },
-        preferred_role_tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "Roles the candidate should be considered for (e.g. ['Data Engineer', 'Analytics Engineer'])",
-        },
-        location_tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "Location preferences — defaults to the candidate's submitted location if omitted",
-        },
-        skill_tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "Skills to tag the pool entry with — defaults to the candidate's claimed skills",
-        },
-        promoted_by: {
-          type: "string",
-          description: "Name/identifier of who is promoting — defaults to 'Recruiter (Agent)'",
-        },
-      },
-      required: ["referral_id", "experience_level"],
-    },
-  },
-  {
-    name: "rescore_referral",
-    description:
-      "Re-run match scoring for a submitted referral against all open job postings using the current scoring weights. Use this when a recruiter asks to re-evaluate, re-score, or refresh scores for a referral — especially after skills are updated or scoring weights change. Returns new match scores for all open jobs. AI scoring is used when available, static scoring as fallback.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        referral_id: {
-          type: "string",
-          description: "The referral ID to re-score (e.g. REF-2024-abc123). Use get_referrals first if you need to find it.",
-        },
-        skills: {
-          type: "array",
-          items: { type: "string" },
-          description: "Override the candidate's stored skills for this scoring run only (optional — omit to use stored skills)",
-        },
-      },
-      required: ["referral_id"],
-    },
-  },
-  {
-    name: "get_live_matches",
-    description:
-      "Get AI-scored match records for submitted referrals against open job postings. Each record contains skill_overlap_score, experience_score, location_score, seniority_score, a weighted match_score, and a Strong/Partial/No Match classification. Use this when asked about match scores, how a referral scored against jobs, or which referrals best fit a particular role.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        referral_id: {
-          type: "string",
-          description: "Filter by referral ID to see all job matches for one referral",
-        },
-        posting_id: {
-          type: "string",
-          description: "Filter by job posting ID to see all referrals scored against that job",
-        },
-        classification: {
-          type: "string",
-          enum: ["Strong Match", "Partial Match", "No Match"],
-          description: "Filter by match classification",
-        },
-        min_score: {
-          type: "number",
-          description: "Only return matches with match_score >= this value (0–100)",
+    type: "function",
+    function: {
+      name: "get_live_pool",
+      description:
+        "Get candidates currently in the live talent pool — these are submitted referrals that a recruiter has promoted. Returns pool entry details including candidate info, skill tags, experience level, preferred roles, pool status, and their match evaluation history. Use this when asked about the talent pool, pooled candidates, or candidates on hold.",
+      parameters: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["Active Hold", "Aging Review", "Withdrawn", "Placed"],
+            description: "Filter pool entries by hold status",
+          },
+          experience_level: {
+            type: "string",
+            enum: ["Junior", "Mid", "Senior", "Lead"],
+            description: "Filter by candidate experience level",
+          },
         },
       },
     },
   },
   {
-    name: "make_decision",
-    description:
-      "Record a recruiter decision on a submitted referral. Use this when the recruiter says they want to proceed, put on hold, or mark as not suitable. Decisions are persisted and notify the referrer by email. Valid decisions: PROCEED (move forward with the candidate), ON_HOLD (keep for future consideration), NOT_SUITABLE (decline the candidate).",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        referral_id: {
-          type: "string",
-          description: "The referral ID to make a decision on (e.g. REF-2024-abc123). Use get_referrals first to look it up by name if needed.",
+    type: "function",
+    function: {
+      name: "promote_to_pool",
+      description:
+        "Promote a submitted referral to the live talent pool. Use this when a recruiter says they want to move a candidate to the pool, add someone to the talent pool, or hold a referral for future roles. Requires the referral_id and experience level. Automatically writes an audit event, updates the referral pipeline_status to in_pool, and fires email notifications. Returns the new pool_id on success.",
+      parameters: {
+        type: "object",
+        properties: {
+          referral_id: {
+            type: "string",
+            description: "The referral ID to promote (e.g. REF-2024-abc123). Use get_referrals first if you need to find it.",
+          },
+          experience_level: {
+            type: "string",
+            enum: ["Junior", "Mid", "Senior", "Lead"],
+            description: "Seniority classification for this candidate in the pool",
+          },
+          preferred_role_tags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Roles the candidate should be considered for (e.g. ['Data Engineer', 'Analytics Engineer'])",
+          },
+          location_tags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Location preferences — defaults to the candidate's submitted location if omitted",
+          },
+          skill_tags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Skills to tag the pool entry with — defaults to the candidate's claimed skills",
+          },
+          promoted_by: {
+            type: "string",
+            description: "Name/identifier of who is promoting — defaults to 'Recruiter (Agent)'",
+          },
         },
-        decision: {
-          type: "string",
-          enum: ["PROCEED", "ON_HOLD", "NOT_SUITABLE"],
-          description: "The recruiter's decision: PROCEED = move forward, ON_HOLD = keep for later, NOT_SUITABLE = decline",
-        },
-        reason_code: {
-          type: "string",
-          description: "Short reason code or note explaining the decision (e.g. 'skills_gap', 'strong_fit', 'role_filled'). Optional but recommended.",
-        },
+        required: ["referral_id", "experience_level"],
       },
-      required: ["referral_id", "decision"],
     },
   },
   {
-    name: "log_contact_event",
-    description:
-      "Log a contact event recording that a recruiter reached out to a candidate. Use this when the recruiter says they contacted, emailed, called, or messaged a candidate. Persists the event and notifies the referrer that their candidate was contacted.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        referral_id: {
-          type: "string",
-          description: "The referral ID of the candidate who was contacted (e.g. REF-2024-abc123). Use get_referrals to find it by name if needed.",
+    type: "function",
+    function: {
+      name: "rescore_referral",
+      description:
+        "Re-run match scoring for a submitted referral against all open job postings using the current scoring weights. Use this when a recruiter asks to re-evaluate, re-score, or refresh scores for a referral — especially after skills are updated or scoring weights change. Returns new match scores for all open jobs. AI scoring is used when available, static scoring as fallback.",
+      parameters: {
+        type: "object",
+        properties: {
+          referral_id: {
+            type: "string",
+            description: "The referral ID to re-score (e.g. REF-2024-abc123). Use get_referrals first if you need to find it.",
+          },
+          skills: {
+            type: "array",
+            items: { type: "string" },
+            description: "Override the candidate's stored skills for this scoring run only (optional — omit to use stored skills)",
+          },
         },
-        posting_id: {
-          type: "string",
-          description: "The job posting ID this contact is related to (e.g. ROL-abc123). Use get_referrals to find the target_job_id.",
-        },
-        contact_method: {
-          type: "string",
-          enum: ["email", "phone", "linkedin", "other"],
-          description: "How the recruiter contacted the candidate",
-        },
-        contacted_by: {
-          type: "string",
-          description: "Name or identifier of the recruiter who made contact",
-        },
-        notes: {
-          type: "string",
-          description: "Optional notes about the contact — e.g. what was discussed, candidate's response",
-        },
+        required: ["referral_id"],
       },
-      required: ["referral_id", "posting_id", "contact_method", "contacted_by"],
     },
   },
   {
-    name: "get_contact_history",
-    description:
-      "Retrieve the contact history for a specific referral — all past outreach events logged by recruiters. Optionally filter to show only candidates who have NOT been contacted in the last N days (useful for follow-up prioritisation).",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        referral_id: {
-          type: "string",
-          description: "The referral ID to retrieve contact history for. Required.",
-        },
-        no_contact_days: {
-          type: "number",
-          description: "If provided, only return results if the last contact was more than this many days ago (or there has been no contact at all). Useful for identifying candidates who need a follow-up.",
+    type: "function",
+    function: {
+      name: "get_live_matches",
+      description:
+        "Get AI-scored match records for submitted referrals against open job postings. Each record contains skill_overlap_score, experience_score, location_score, seniority_score, a weighted match_score, and a Strong/Partial/No Match classification. Use this when asked about match scores, how a referral scored against jobs, or which referrals best fit a particular role.",
+      parameters: {
+        type: "object",
+        properties: {
+          referral_id: { type: "string", description: "Filter by referral ID to see all job matches for one referral" },
+          posting_id: { type: "string", description: "Filter by job posting ID to see all referrals scored against that job" },
+          classification: {
+            type: "string",
+            enum: ["Strong Match", "Partial Match", "No Match"],
+            description: "Filter by match classification",
+          },
+          min_score: { type: "number", description: "Only return matches with match_score >= this value (0–100)" },
         },
       },
-      required: ["referral_id"],
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "make_decision",
+      description:
+        "Record a recruiter decision on a submitted referral. Use this when the recruiter says they want to proceed, put on hold, or mark as not suitable. Decisions are persisted and notify the referrer by email. Valid decisions: PROCEED (move forward with the candidate), ON_HOLD (keep for future consideration), NOT_SUITABLE (decline the candidate).",
+      parameters: {
+        type: "object",
+        properties: {
+          referral_id: {
+            type: "string",
+            description: "The referral ID to make a decision on (e.g. REF-2024-abc123). Use get_referrals first to look it up by name if needed.",
+          },
+          decision: {
+            type: "string",
+            enum: ["PROCEED", "ON_HOLD", "NOT_SUITABLE"],
+            description: "The recruiter's decision: PROCEED = move forward, ON_HOLD = keep for later, NOT_SUITABLE = decline",
+          },
+          reason_code: {
+            type: "string",
+            description: "Short reason code or note explaining the decision (e.g. 'skills_gap', 'strong_fit', 'role_filled'). Optional but recommended.",
+          },
+        },
+        required: ["referral_id", "decision"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "log_contact_event",
+      description:
+        "Log a contact event recording that a recruiter reached out to a candidate. Use this when the recruiter says they contacted, emailed, called, or messaged a candidate. Persists the event and notifies the referrer that their candidate was contacted.",
+      parameters: {
+        type: "object",
+        properties: {
+          referral_id: {
+            type: "string",
+            description: "The referral ID of the candidate who was contacted (e.g. REF-2024-abc123). Use get_referrals to find it by name if needed.",
+          },
+          posting_id: {
+            type: "string",
+            description: "The job posting ID this contact is related to (e.g. ROL-abc123). Use get_referrals to find the target_job_id.",
+          },
+          contact_method: {
+            type: "string",
+            enum: ["email", "phone", "linkedin", "other"],
+            description: "How the recruiter contacted the candidate",
+          },
+          contacted_by: { type: "string", description: "Name or identifier of the recruiter who made contact" },
+          notes: { type: "string", description: "Optional notes about the contact — e.g. what was discussed, candidate's response" },
+        },
+        required: ["referral_id", "posting_id", "contact_method", "contacted_by"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_contact_history",
+      description:
+        "Retrieve the contact history for a specific referral — all past outreach events logged by recruiters. Optionally filter to show only candidates who have NOT been contacted in the last N days (useful for follow-up prioritisation).",
+      parameters: {
+        type: "object",
+        properties: {
+          referral_id: { type: "string", description: "The referral ID to retrieve contact history for. Required." },
+          no_contact_days: {
+            type: "number",
+            description: "If provided, only return results if the last contact was more than this many days ago (or there has been no contact at all). Useful for identifying candidates who need a follow-up.",
+          },
+        },
+        required: ["referral_id"],
+      },
     },
   },
 ];
@@ -890,7 +879,8 @@ export async function POST(request: NextRequest) {
     hydrateStoreFromDisk();
 
     const body = await request.json();
-    const { messages } = body as { messages: Anthropic.MessageParam[] };
+    // [ANTHROPIC - PLACEHOLDER] const { messages } = body as { messages: Anthropic.MessageParam[] };
+    const { messages } = body as { messages: OpenAI.Chat.ChatCompletionMessageParam[] };
 
     if (!messages || messages.length === 0) {
       return NextResponse.json({ error: "messages is required" }, { status: 400 });
@@ -947,50 +937,63 @@ Always use tools to fetch live data before answering. When a question could invo
     while (iterations < MAX_ITERATIONS) {
       iterations++;
 
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
+      // [ANTHROPIC - PLACEHOLDER]
+      // const response = await anthropic.messages.create({
+      //   model: "claude-sonnet-4-6",
+      //   max_tokens: 2048,
+      //   system: systemPrompt,
+      //   tools,
+      //   messages: currentMessages,
+      // });
+      // if (response.stop_reason === "end_turn") { ... }
+      // if (response.stop_reason === "tool_use") { ... }
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
         max_tokens: 2048,
-        system: systemPrompt,
         tools,
-        messages: currentMessages,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...currentMessages,
+        ],
       });
 
-      if (response.stop_reason === "end_turn") {
-        const textContent = response.content
-          .filter((c): c is Anthropic.TextBlock => c.type === "text")
-          .map((c) => c.text)
-          .join("\n");
+      const choice = response.choices[0];
+
+      if (choice.finish_reason === "stop") {
+        const textContent = choice.message.content ?? "";
 
         return NextResponse.json({
           response: textContent,
           messages: [
             ...currentMessages,
-            { role: "assistant", content: response.content },
+            { role: "assistant", content: textContent },
           ],
         });
       }
 
-      if (response.stop_reason === "tool_use") {
-        const toolUseBlocks = response.content.filter(
-          (c): c is Anthropic.ToolUseBlock => c.type === "tool_use"
-        );
+      if (choice.finish_reason === "tool_calls") {
+        const toolCalls = choice.message.tool_calls ?? [];
 
         currentMessages = [
           ...currentMessages,
-          { role: "assistant", content: response.content },
+          { role: "assistant", content: choice.message.content ?? null, tool_calls: toolCalls },
         ];
 
-        const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
-          toolUseBlocks.map(async (toolUse) => ({
-            type: "tool_result" as const,
-            tool_use_id: toolUse.id,
-            content: await executeTool(toolUse.name, toolUse.input as Record<string, unknown>),
+        const toolResults: OpenAI.Chat.ChatCompletionToolMessageParam[] = await Promise.all(
+          toolCalls.map(async (toolCall) => ({
+            role: "tool" as const,
+            tool_call_id: toolCall.id,
+            content: await executeTool(
+              toolCall.function.name,
+              JSON.parse(toolCall.function.arguments) as Record<string, unknown>
+            ),
           }))
         );
 
         currentMessages = [
           ...currentMessages,
-          { role: "user", content: toolResults },
+          ...toolResults,
         ];
 
         continue;

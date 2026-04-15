@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+// [ANTHROPIC - PLACEHOLDER] import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { extractText, SUPPORTED_EXTENSIONS, SUPPORTED_MIME_TYPES } from "@/lib/resume-parser";
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -18,9 +19,11 @@ export interface ExtractedCandidate {
 }
 
 async function extractCandidateFields(resumeText: string): Promise<ExtractedCandidate> {
-  if (!process.env.ANTHROPIC_API_KEY) return {};
+  // [ANTHROPIC - PLACEHOLDER] if (!process.env.ANTHROPIC_API_KEY) return {};
+  if (!process.env.OPENAI_API_KEY) return {};
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // [ANTHROPIC - PLACEHOLDER] const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   const prompt = `Extract structured candidate information from the resume below.
 
@@ -45,16 +48,24 @@ RESUME TEXT:
 ${resumeText.slice(0, 6000)}`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+    // [ANTHROPIC - PLACEHOLDER]
+    // const response = await anthropic.messages.create({
+    //   model: "claude-haiku-4-5-20251001",
+    //   max_tokens: 600,
+    //   messages: [{ role: "user", content: prompt }],
+    // });
+    // const text = response.content
+    //   .filter((c): c is Anthropic.TextBlock => c.type === "text")
+    //   .map((c) => c.text)
+    //   .join("");
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
       max_tokens: 600,
       messages: [{ role: "user", content: prompt }],
     });
 
-    const text = response.content
-      .filter((c): c is Anthropic.TextBlock => c.type === "text")
-      .map((c) => c.text)
-      .join("");
+    const text = response.choices[0].message.content ?? "";
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return {};
