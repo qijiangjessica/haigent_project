@@ -81,5 +81,10 @@ export function getMyDomain(): string {
 }
 
 export function getAgentId(): string {
-  return SALESFORCE_AGENT_ID!;
+  if (!SALESFORCE_AGENT_ID || SALESFORCE_AGENT_ID.trim().length === 0) {
+    throw new Error(
+      "Missing SALESFORCE_AGENT_ID environment variable. Set it in .env and restart the dev server."
+    );
+  }
+  return SALESFORCE_AGENT_ID;
 }

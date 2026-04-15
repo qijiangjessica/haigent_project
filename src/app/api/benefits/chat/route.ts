@@ -143,6 +143,7 @@ Always address the employee by their first name once you know it.`;
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 2048,
+        top_p: 1,
         system: systemPrompt,
         tools,
         messages: currentMessages,

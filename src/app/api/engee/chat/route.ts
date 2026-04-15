@@ -281,6 +281,9 @@ const TOOLS = [
 const model = new ChatAnthropic({
   model: "claude-sonnet-4-6",
   maxTokens: 2048,
+  invocationKwargs: {
+    top_p: undefined,
+  },
 }).bindTools(TOOLS);
 
 const toolNode = new ToolNode(TOOLS);
